@@ -2,7 +2,7 @@ use std::io::{self, Write};
 
 const CHARPAD: u8 = b'=';
 
-pub fn base64_encode(input: &[u8], mut output: impl Write, is_inline: bool) -> io::Result<()> {
+pub fn base64_encode(input: &[u8], mut output: impl Write, is_inline: bool) -> io::Result<usize> {
     let mut i = 0;
     let mut t1;
     let mut t2;
@@ -64,7 +64,7 @@ pub fn base64_encode(input: &[u8], mut output: impl Write, is_inline: bool) -> i
         output.write_all(b"\r\n")?;
     }
 
-    Ok(())
+    Ok(bytes_written)
 }
 
 #[cfg(test)]

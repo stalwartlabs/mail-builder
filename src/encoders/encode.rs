@@ -1,3 +1,7 @@
+use std::io::{self, Write};
+
+use super::{base64::base64_encode, quoted_printable::quoted_printable_encode};
+
 pub enum EncodingType {
     Base64,
     QuotedPrintable(bool),
@@ -47,4 +51,40 @@ pub fn get_encoding_type(input: &str, is_inline: bool) -> EncodingType {
     } else {
         EncodingType::Base64
     }
+}
+
+pub fn rfc2047_encode(input: &str, mut output: impl Write) -> io::Result<usize> {
+    Ok(match get_encoding_type(input, true) {
+        EncodingType::Base64 => {
+            output.write_all(b"=?utf-8?B?")?;
+            let bytes_written = base64_encode(input.as_bytes(), &mut output, true)? + 12;
+            output.write_all(b"?=")?;
+            bytes_written
+        }
+        EncodingType::QuotedPrintable(is_ascii) => {
+            if !is_ascii {
+                output.write_all(b"=?utf-8?Q?")?;
+            } else {
+                output.write_all(b"=?us-ascii?Q?")?;
+            }
+            let bytes_written = quoted_printable_encode(input.as_bytes(), &mut output, true)?
+                + if is_ascii { 15 } else { 12 };
+            output.write_all(b"?=")?;
+            bytes_written
+        }
+        EncodingType::None => {
+            let mut bytes_written = 2;
+            output.write_all(b"\"")?;
+            for &ch in input.as_bytes() {
+                if ch == b'\\' || ch == b'"' {
+                    output.write_all(b"\\")?;
+                    bytes_written += 1;
+                }
+                output.write_all(&[ch])?;
+                bytes_written += 1;
+            }
+            output.write_all(b"\"")?;
+            bytes_written
+        }
+    })
 }

@@ -4,10 +4,9 @@ pub fn quoted_printable_encode(
     input: &[u8],
     mut output: impl Write,
     is_inline: bool,
-) -> io::Result<()> {
+) -> io::Result<usize> {
+    let mut bytes_written = 0;
     if !is_inline {
-        let mut bytes_written = 0;
-
         for (pos, &ch) in input.iter().enumerate() {
             if ch == b'='
                 || ch >= 127
@@ -34,15 +33,18 @@ pub fn quoted_printable_encode(
         for &ch in input.iter() {
             if ch == b'=' || ch == b'?' || ch == b'\t' || ch == b'\r' || ch == b'\n' || ch >= 127 {
                 output.write_all(format!("={:02X}", ch).as_bytes())?;
+                bytes_written += 3;
             } else if ch == b' ' {
                 output.write_all(b"_")?;
+                bytes_written += 1;
             } else {
                 output.write_all(&[ch])?;
+                bytes_written += 1;
             }
         }
     }
 
-    Ok(())
+    Ok(bytes_written)
 }
 
 #[cfg(test)]

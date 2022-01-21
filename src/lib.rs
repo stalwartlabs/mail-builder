@@ -1,11 +1,12 @@
-pub mod base64;
-pub mod encode;
-pub mod quoted_printable;
+pub mod encoders;
+pub mod headers;
 
 use std::{borrow::Cow, collections::HashMap};
 
+use headers::{address::Address, date::Date, message_id::MessageId, text::Text, HeaderType};
+
 pub struct MessageBuilder<'x> {
-    pub headers: HashMap<String, Vec<Cow<'x, str>>>,
+    pub headers: HashMap<String, Vec<HeaderType<'x>>>,
     pub body: Vec<MimePart<'x>>,
 }
 
@@ -98,132 +99,56 @@ impl<'x> MimePart<'x> {
     }
 }
 
-pub struct EmailAddress<'x> {
-    pub name: Option<Cow<'x, str>>,
-    pub email: Cow<'x, str>,
-}
-
-pub struct GroupedAddresses<'x> {
-    pub name: Option<Cow<'x, str>>,
-    pub addresses: Vec<EmailAddress<'x>>,
-}
-
-pub enum Address<'x> {
-    Address(EmailAddress<'x>),
-    Group(GroupedAddresses<'x>),
-    List(Vec<Address<'x>>),
-}
-
-pub struct MessageIds<'x> {
-    pub id: Vec<Cow<'x, str>>,
-}
-
-pub struct Date<'x> {
-    pub date: Cow<'x, str>,
-}
-
-pub struct URL<'x> {
-    pub url: Vec<Cow<'x, str>>,
-}
-
-pub struct UnstructuredText<'x> {
-    pub text: Cow<'x, str>,
-}
-
-pub struct Raw<'x> {
-    pub raw: Cow<'x, str>,
-}
-
-pub trait RawHeader {
-    fn into_raw_header(self) -> String;
-}
-
-impl<'x> RawHeader for Address<'x> {
-    fn into_raw_header(self) -> String {
-        todo!()
-    }
-}
-
-impl<'x> RawHeader for MessageIds<'x> {
-    fn into_raw_header(self) -> String {
-        todo!()
-    }
-}
-
-impl<'x> RawHeader for Date<'x> {
-    fn into_raw_header(self) -> String {
-        todo!()
-    }
-}
-
-impl<'x> RawHeader for URL<'x> {
-    fn into_raw_header(self) -> String {
-        todo!()
-    }
-}
-
-impl<'x> RawHeader for UnstructuredText<'x> {
-    fn into_raw_header(self) -> String {
-        todo!()
-    }
-}
-
-impl<'x> RawHeader for Raw<'x> {
-    fn into_raw_header(self) -> String {
-        self.raw.into_owned()
-    }
-}
-
 impl<'x> MessageBuilder<'x> {
-    pub fn message_id(&mut self, value: MessageIds) {
-        self.header("Message-ID", value);
+    pub fn message_id(&mut self, value: MessageId<'x>) {
+        self.header("Message-ID", value.into());
     }
 
-    pub fn in_reply_to(&mut self, value: MessageIds) {
-        self.header("In-Reply-To", value);
+    pub fn in_reply_to(&mut self, value: MessageId<'x>) {
+        self.header("In-Reply-To", value.into());
     }
 
-    pub fn references(&mut self, value: MessageIds) {
-        self.header("References", value);
+    pub fn references(&mut self, value: MessageId<'x>) {
+        self.header("References", value.into());
     }
 
-    pub fn sender(&mut self, value: Address) {
-        self.header("Sender", value);
+    pub fn sender(&mut self, value: Address<'x>) {
+        self.header("Sender", value.into());
     }
 
-    pub fn from(&mut self, value: Address) {
-        self.header("From", value);
+    pub fn from(&mut self, value: Address<'x>) {
+        self.header("From", value.into());
     }
 
-    pub fn to(&mut self, value: Address) {
-        self.header("To", value);
+    pub fn to(&mut self, value: Address<'x>) {
+        self.header("To", value.into());
     }
 
-    pub fn cc(&mut self, value: Address) {
-        self.header("Cc", value);
+    pub fn cc(&mut self, value: Address<'x>) {
+        self.header("Cc", value.into());
     }
 
-    pub fn bcc(&mut self, value: Address) {
-        self.header("Bcc", value);
+    pub fn bcc(&mut self, value: Address<'x>) {
+        self.header("Bcc", value.into());
     }
 
-    pub fn reply_to(&mut self, value: Address) {
-        self.header("Reply-To", value);
+    pub fn reply_to(&mut self, value: Address<'x>) {
+        self.header("Reply-To", value.into());
     }
 
     pub fn subject(&mut self, value: Cow<'x, str>) {
-        self.header("From", UnstructuredText { text: value });
+        self.header("From", Text { text: value }.into());
     }
 
-    pub fn date(&mut self, value: Date) {
-        self.header("Date", value);
+    pub fn date(&mut self, value: Date<'x>) {
+        self.header("Date", value.into());
     }
 
-    pub fn header(&mut self, header: &str, value: impl RawHeader) {
+    pub fn header(&mut self, header: &str, value: HeaderType<'x>) {
         self.headers
             .entry(header.to_string())
             .or_insert_with(Vec::new)
-            .push(value.into_raw_header().into());
+            .push(value);
     }
 
     pub fn text_body(&mut self, value: Cow<'x, str>) {

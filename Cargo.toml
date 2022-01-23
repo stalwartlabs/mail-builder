@@ -10,3 +10,7 @@ homepage = "https://github.com/stalwartlabs/mail-builder"
 keywords = ["email", "mime", "mail", "e-mail"]
 categories = ["email"]
 readme = "README.md"
+
+[dependencies]
+gethostname = "0.2.2"
+chrono = "0.4"

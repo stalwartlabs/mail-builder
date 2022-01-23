@@ -1,4 +1,5 @@
 pub mod address;
+pub mod content_type;
 pub mod date;
 pub mod message_id;
 pub mod raw;
@@ -7,19 +8,23 @@ pub mod url;
 
 use std::io::{self, Write};
 
-use self::{address::Address, date::Date, message_id::MessageId, raw::Raw, text::Text, url::URL};
+use self::{
+    address::Address, content_type::ContentType, date::Date, message_id::MessageId, raw::Raw,
+    text::Text, url::URL,
+};
 
 pub trait Header {
-    fn write_header(&self, output: impl Write, line_len: usize) -> io::Result<usize>;
+    fn write_header(&self, output: impl Write, bytes_written: usize) -> io::Result<usize>;
 }
 
 pub enum HeaderType<'x> {
     Address(Address<'x>),
-    Date(Date<'x>),
+    Date(Date),
     MessageId(MessageId<'x>),
     Raw(Raw<'x>),
     Text(Text<'x>),
     URL(URL<'x>),
+    ContentType(ContentType<'x>),
 }
 
 impl<'x> From<Address<'x>> for HeaderType<'x> {
@@ -28,8 +33,14 @@ impl<'x> From<Address<'x>> for HeaderType<'x> {
     }
 }
 
-impl<'x> From<Date<'x>> for HeaderType<'x> {
-    fn from(value: Date<'x>) -> Self {
+impl<'x> From<ContentType<'x>> for HeaderType<'x> {
+    fn from(value: ContentType<'x>) -> Self {
+        HeaderType::ContentType(value)
+    }
+}
+
+impl<'x> From<Date> for HeaderType<'x> {
+    fn from(value: Date) -> Self {
         HeaderType::Date(value)
     }
 }
@@ -52,5 +63,19 @@ impl<'x> From<Text<'x>> for HeaderType<'x> {
 impl<'x> From<URL<'x>> for HeaderType<'x> {
     fn from(value: URL<'x>) -> Self {
         HeaderType::URL(value)
+    }
+}
+
+impl<'x> Header for HeaderType<'x> {
+    fn write_header(&self, output: impl Write, bytes_written: usize) -> io::Result<usize> {
+        match self {
+            HeaderType::Address(value) => value.write_header(output, bytes_written),
+            HeaderType::Date(value) => value.write_header(output, bytes_written),
+            HeaderType::MessageId(value) => value.write_header(output, bytes_written),
+            HeaderType::Raw(value) => value.write_header(output, bytes_written),
+            HeaderType::Text(value) => value.write_header(output, bytes_written),
+            HeaderType::URL(value) => value.write_header(output, bytes_written),
+            HeaderType::ContentType(value) => value.write_header(output, bytes_written),
+        }
     }
 }

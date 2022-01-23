@@ -56,20 +56,20 @@ pub fn get_encoding_type(input: &str, is_inline: bool) -> EncodingType {
 pub fn rfc2047_encode(input: &str, mut output: impl Write) -> io::Result<usize> {
     Ok(match get_encoding_type(input, true) {
         EncodingType::Base64 => {
-            output.write_all(b"=?utf-8?B?")?;
-            let bytes_written = base64_encode(input.as_bytes(), &mut output, true)? + 12;
-            output.write_all(b"?=")?;
+            output.write_all(b"\"=?utf-8?B?")?;
+            let bytes_written = base64_encode(input.as_bytes(), &mut output, true)? + 14;
+            output.write_all(b"?=\"")?;
             bytes_written
         }
         EncodingType::QuotedPrintable(is_ascii) => {
             if !is_ascii {
-                output.write_all(b"=?utf-8?Q?")?;
+                output.write_all(b"\"=?utf-8?Q?")?;
             } else {
-                output.write_all(b"=?us-ascii?Q?")?;
+                output.write_all(b"\"=?us-ascii?Q?")?;
             }
             let bytes_written = quoted_printable_encode(input.as_bytes(), &mut output, true)?
-                + if is_ascii { 15 } else { 12 };
-            output.write_all(b"?=")?;
+                + if is_ascii { 19 } else { 14 };
+            output.write_all(b"?=\"")?;
             bytes_written
         }
         EncodingType::None => {

@@ -1,23 +1,40 @@
-use std::borrow::Cow;
-
 use crate::encoders::encode::rfc2047_encode;
 
 use super::Header;
 
 pub struct EmailAddress<'x> {
-    pub name: Option<Cow<'x, str>>,
-    pub email: Cow<'x, str>,
+    pub name: Option<&'x str>,
+    pub email: &'x str,
 }
 
 pub struct GroupedAddresses<'x> {
-    pub name: Option<Cow<'x, str>>,
-    pub addresses: Vec<EmailAddress<'x>>,
+    pub name: Option<&'x str>,
+    pub addresses: Vec<Address<'x>>,
 }
 
 pub enum Address<'x> {
     Address(EmailAddress<'x>),
     Group(GroupedAddresses<'x>),
     List(Vec<Address<'x>>),
+}
+
+impl<'x> Address<'x> {
+    pub fn new_address(name: Option<&'x str>, email: &'x str) -> Self {
+        Address::Address(EmailAddress { name, email })
+    }
+    pub fn new_group(name: Option<&'x str>, addresses: Vec<Address<'x>>) -> Self {
+        Address::Group(GroupedAddresses { name, addresses })
+    }
+    pub fn new_list(items: Vec<Address<'x>>) -> Self {
+        Address::List(items)
+    }
+
+    pub fn unwrap_address(&self) -> &EmailAddress<'x> {
+        match self {
+            Address::Address(address) => address,
+            _ => panic!("Address is not an EmailAddress"),
+        }
+    }
 }
 
 impl<'x> Header for Address<'x> {
@@ -35,6 +52,20 @@ impl<'x> Header for Address<'x> {
             }
             Address::List(list) => {
                 for (pos, address) in list.iter().enumerate() {
+                    if bytes_written
+                        + (match address {
+                            Address::Address(address) => {
+                                address.email.len() + address.name.map_or(0, |n| n.len() + 3) + 2
+                            }
+                            Address::Group(group) => group.name.map_or(0, |name| name.len() + 2),
+                            Address::List(_) => 0,
+                        })
+                        >= 76
+                    {
+                        output.write_all(b"\r\n\t")?;
+                        bytes_written = 1;
+                    }
+
                     match address {
                         Address::Address(address) => {
                             bytes_written += address.write_header(&mut output, bytes_written)?;
@@ -52,11 +83,6 @@ impl<'x> Header for Address<'x> {
                         }
                         Address::List(_) => unreachable!(),
                     }
-
-                    if bytes_written > 76 && pos < list.len() - 1 {
-                        output.write_all(b"\r\n\t")?;
-                        bytes_written = 0;
-                    }
                 }
             }
         }
@@ -69,12 +95,24 @@ impl<'x> Header for EmailAddress<'x> {
     fn write_header(
         &self,
         mut output: impl std::io::Write,
-        _line_len: usize,
+        mut bytes_written: usize,
     ) -> std::io::Result<usize> {
-        let mut bytes_written = 0;
         if let Some(name) = &self.name {
-            bytes_written += rfc2047_encode(name.as_ref(), &mut output)? + 1;
-            output.write_all(b" ")?;
+            println!("{} <{}>: {}", name, self.email, bytes_written);
+            bytes_written += rfc2047_encode(name, &mut output)?;
+            println!(
+                "{} <{}>: {}",
+                name,
+                self.email,
+                bytes_written + self.email.len() + 2
+            );
+            if bytes_written + self.email.len() + 2 >= 76 {
+                output.write_all(b"\r\n\t")?;
+                bytes_written = 1;
+            } else {
+                output.write_all(b" ")?;
+                bytes_written += 1;
+            }
         }
 
         output.write_all(b"<")?;
@@ -89,25 +127,27 @@ impl<'x> Header for GroupedAddresses<'x> {
     fn write_header(
         &self,
         mut output: impl std::io::Write,
-        _line_len: usize,
+        mut bytes_written: usize,
     ) -> std::io::Result<usize> {
-        let mut bytes_written = 0;
         if let Some(name) = &self.name {
-            bytes_written += rfc2047_encode(name.as_ref(), &mut output)? + 2;
+            bytes_written += rfc2047_encode(name, &mut output)? + 2;
             output.write_all(b": ")?;
         }
 
         for (pos, address) in self.addresses.iter().enumerate() {
-            if pos > 0 {
-                output.write_all(b", ")?;
-                bytes_written += 2;
+            let address = address.unwrap_address();
+
+            if bytes_written + address.email.len() + address.name.map_or(0, |n| n.len() + 3) + 2
+                >= 76
+            {
+                output.write_all(b"\r\n\t")?;
+                bytes_written = 1;
             }
 
-            bytes_written += address.write_header(&mut output, 0)?;
-
-            if bytes_written > 76 && pos < self.addresses.len() - 1 {
-                output.write_all(b"\r\n\t")?;
-                bytes_written = 0;
+            bytes_written += address.write_header(&mut output, bytes_written)?;
+            if pos < self.addresses.len() - 1 {
+                output.write_all(b", ")?;
+                bytes_written += 2;
             }
         }
 

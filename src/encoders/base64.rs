@@ -1,3 +1,14 @@
+/*
+ * Copyright Stalwart Labs, Minter Ltd. See the COPYING
+ * file at the top-level directory of this distribution.
+ *
+ * Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
+ * https://www.apache.org/licenses/LICENSE-2.0> or the MIT license
+ * <LICENSE-MIT or https://opensource.org/licenses/MIT>, at your
+ * option. This file may not be copied, modified, or distributed
+ * except according to those terms.
+ */
+
 use std::io::{self, Write};
 
 const CHARPAD: u8 = b'=';
@@ -22,11 +33,10 @@ pub fn base64_encode(input: &[u8], mut output: impl Write, is_inline: bool) -> i
                 E2[t3 as usize],
             ])?;
 
-            if !is_inline {
-                bytes_written += 4;
-                if bytes_written % 19 == 0 {
-                    output.write_all(b"\r\n")?;
-                }
+            bytes_written += 4;
+
+            if !is_inline && bytes_written % 19 == 0 {
+                output.write_all(b"\r\n")?;
             }
 
             i += 3;
@@ -52,11 +62,11 @@ pub fn base64_encode(input: &[u8], mut output: impl Write, is_inline: bool) -> i
                 CHARPAD,
             ])?;
         }
-        if !is_inline {
-            bytes_written += 4;
-            if bytes_written % 19 == 0 {
-                output.write_all(b"\r\n")?;
-            }
+
+        bytes_written += 4;
+
+        if !is_inline && bytes_written % 19 == 0 {
+            output.write_all(b"\r\n")?;
         }
     }
 

@@ -1,16 +1,48 @@
+/*
+ * Copyright Stalwart Labs, Minter Ltd. See the COPYING
+ * file at the top-level directory of this distribution.
+ *
+ * Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
+ * https://www.apache.org/licenses/LICENSE-2.0> or the MIT license
+ * <LICENSE-MIT or https://opensource.org/licenses/MIT>, at your
+ * option. This file may not be copied, modified, or distributed
+ * except according to those terms.
+ */
+
 use super::Header;
 
+/// RFC5322 Message ID header
 pub struct MessageId<'x> {
     pub id: Vec<&'x str>,
 }
 
 impl<'x> MessageId<'x> {
+    /// Create a new Message ID header
     pub fn new(id: &'x str) -> Self {
         Self { id: vec![id] }
     }
 
+    /// Create a new multi-value Message ID header
     pub fn new_list(ids: &[&'x str]) -> Self {
         Self { id: ids.to_vec() }
+    }
+}
+
+impl<'x> From<&'x str> for MessageId<'x> {
+    fn from(value: &'x str) -> Self {
+        Self::new(value)
+    }
+}
+
+impl<'x> From<&[&'x str]> for MessageId<'x> {
+    fn from(value: &[&'x str]) -> Self {
+        Self::new_list(value)
+    }
+}
+
+impl<'x> From<Vec<&'x str>> for MessageId<'x> {
+    fn from(value: Vec<&'x str>) -> Self {
+        MessageId { id: value }
     }
 }
 

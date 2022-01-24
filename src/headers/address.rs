@@ -1,17 +1,31 @@
+/*
+ * Copyright Stalwart Labs, Minter Ltd. See the COPYING
+ * file at the top-level directory of this distribution.
+ *
+ * Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
+ * https://www.apache.org/licenses/LICENSE-2.0> or the MIT license
+ * <LICENSE-MIT or https://opensource.org/licenses/MIT>, at your
+ * option. This file may not be copied, modified, or distributed
+ * except according to those terms.
+ */
+
 use crate::encoders::encode::rfc2047_encode;
 
 use super::Header;
 
+/// RFC5322 e-mail address
 pub struct EmailAddress<'x> {
     pub name: Option<&'x str>,
     pub email: &'x str,
 }
 
+/// RFC5322 grouped e-mail addresses
 pub struct GroupedAddresses<'x> {
     pub name: Option<&'x str>,
     pub addresses: Vec<Address<'x>>,
 }
 
+/// RFC5322 address
 pub enum Address<'x> {
     Address(EmailAddress<'x>),
     Group(GroupedAddresses<'x>),
@@ -19,12 +33,17 @@ pub enum Address<'x> {
 }
 
 impl<'x> Address<'x> {
+    /// Create an RFC5322 e-mail address
     pub fn new_address(name: Option<&'x str>, email: &'x str) -> Self {
         Address::Address(EmailAddress { name, email })
     }
+
+    /// Create an RFC5322 grouped e-mail address
     pub fn new_group(name: Option<&'x str>, addresses: Vec<Address<'x>>) -> Self {
         Address::Group(GroupedAddresses { name, addresses })
     }
+
+    /// Create an address list
     pub fn new_list(items: Vec<Address<'x>>) -> Self {
         Address::List(items)
     }
@@ -34,6 +53,39 @@ impl<'x> Address<'x> {
             Address::Address(address) => address,
             _ => panic!("Address is not an EmailAddress"),
         }
+    }
+}
+
+impl<'x> From<(&'x str, &'x str)> for Address<'x> {
+    fn from(value: (&'x str, &'x str)) -> Self {
+        Address::Address(EmailAddress {
+            name: value.0.into(),
+            email: value.1,
+        })
+    }
+}
+
+impl<'x> From<&'x str> for Address<'x> {
+    fn from(value: &'x str) -> Self {
+        Address::Address(EmailAddress {
+            name: None,
+            email: value,
+        })
+    }
+}
+
+impl<'x> From<Vec<Address<'x>>> for Address<'x> {
+    fn from(value: Vec<Address<'x>>) -> Self {
+        Address::new_list(value)
+    }
+}
+
+impl<'x> From<(&'x str, Vec<Address<'x>>)> for Address<'x> {
+    fn from(value: (&'x str, Vec<Address<'x>>)) -> Self {
+        Address::Group(GroupedAddresses {
+            name: value.0.into(),
+            addresses: value.1,
+        })
     }
 }
 
@@ -98,14 +150,7 @@ impl<'x> Header for EmailAddress<'x> {
         mut bytes_written: usize,
     ) -> std::io::Result<usize> {
         if let Some(name) = &self.name {
-            println!("{} <{}>: {}", name, self.email, bytes_written);
             bytes_written += rfc2047_encode(name, &mut output)?;
-            println!(
-                "{} <{}>: {}",
-                name,
-                self.email,
-                bytes_written + self.email.len() + 2
-            );
             if bytes_written + self.email.len() + 2 >= 76 {
                 output.write_all(b"\r\n\t")?;
                 bytes_written = 1;

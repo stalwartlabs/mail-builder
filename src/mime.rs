@@ -1,3 +1,14 @@
+/*
+ * Copyright Stalwart Labs, Minter Ltd. See the COPYING
+ * file at the top-level directory of this distribution.
+ *
+ * Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
+ * https://www.apache.org/licenses/LICENSE-2.0> or the MIT license
+ * <LICENSE-MIT or https://opensource.org/licenses/MIT>, at your
+ * option. This file may not be copied, modified, or distributed
+ * except according to those terms.
+ */
+
 use std::{
     borrow::Cow,
     collections::{
@@ -7,9 +18,10 @@ use std::{
     hash::{Hash, Hasher},
     io::{self, Write},
     iter::FromIterator,
-    thread,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
+
+use rand::Rng;
 
 use crate::{
     encoders::{
@@ -22,6 +34,7 @@ use crate::{
     },
 };
 
+/// MIME part of an e-mail.
 pub struct MimePart<'x> {
     pub headers: HashMap<String, HeaderType<'x>>,
     pub contents: BodyPart<'x>,
@@ -49,34 +62,37 @@ pub fn make_boundary() -> String {
     let mut s = DefaultHasher::new();
     gethostname::gethostname().hash(&mut s);
     format!(
-        "stlwrt_{}_{:?}_{}",
+        "{:x}_{:x}_{:x}",
         SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap_or_else(|_| Duration::new(0, 0))
             .as_nanos(),
-        thread::current().id(),
+        rand::thread_rng().gen::<u64>(),
         s.finish()
     )
 }
 
 impl<'x> MimePart<'x> {
-    pub fn new(ctype: ContentType<'x>, contents: BodyPart<'x>) -> Self {
+    /// Create a custom MIME part.
+    pub fn new(content_type: ContentType<'x>, contents: BodyPart<'x>) -> Self {
         Self {
             contents,
-            headers: HashMap::from_iter(vec![("Content-Type".into(), ctype.into())]),
+            headers: HashMap::from_iter(vec![("Content-Type".into(), content_type.into())]),
         }
     }
 
-    pub fn new_multipart(ctype: &'x str, contents: Vec<MimePart<'x>>) -> Self {
+    /// Create a new multipart/* MIME part.
+    pub fn new_multipart(content_type: &'x str, contents: Vec<MimePart<'x>>) -> Self {
         Self {
             contents: BodyPart::Multipart(contents),
             headers: HashMap::from_iter(vec![(
                 "Content-Type".to_string(),
-                ContentType::new(ctype).into(),
+                ContentType::new(content_type).into(),
             )]),
         }
     }
 
+    /// Create a new text/plain MIME part.
     pub fn new_text(contents: &'x str) -> Self {
         Self {
             contents: contents.into(),
@@ -89,6 +105,20 @@ impl<'x> MimePart<'x> {
         }
     }
 
+    /// Create a new text/* MIME part.
+    pub fn new_text_other(content_type: &'x str, contents: &'x str) -> Self {
+        Self {
+            contents: contents.into(),
+            headers: HashMap::from_iter(vec![(
+                "Content-Type".to_string(),
+                ContentType::new(content_type)
+                    .attribute("charset", "utf-8")
+                    .into(),
+            )]),
+        }
+    }
+
+    /// Create a new text/html MIME part.
     pub fn new_html(contents: &'x str) -> Self {
         Self {
             contents: contents.into(),
@@ -101,18 +131,18 @@ impl<'x> MimePart<'x> {
         }
     }
 
+    /// Create a new binary MIME part.
     pub fn new_binary(c_type: &'x str, contents: &'x [u8]) -> Self {
         Self {
             contents: contents.into(),
             headers: HashMap::from_iter(vec![(
                 "Content-Type".to_string(),
-                ContentType::new(c_type)
-                    .attribute("charset", "utf-8")
-                    .into(),
+                ContentType::new(c_type).into(),
             )]),
         }
     }
 
+    /// Set the attachment filename of a MIME part.
     pub fn attachment(mut self, filename: &'x str) -> Self {
         self.headers.insert(
             "Content-Disposition".to_string(),
@@ -123,6 +153,7 @@ impl<'x> MimePart<'x> {
         self
     }
 
+    /// Set the MIME part as inline.
     pub fn inline(mut self) -> Self {
         self.headers.insert(
             "Content-Disposition".to_string(),
@@ -131,29 +162,34 @@ impl<'x> MimePart<'x> {
         self
     }
 
+    /// Set the Content-Language header of a MIME part.
     pub fn language(mut self, value: &'x str) -> Self {
         self.headers
             .insert("Content-Language".to_string(), Text::new(value).into());
         self
     }
 
+    /// Set the Content-ID header of a MIME part.
     pub fn cid(mut self, value: &'x str) -> Self {
         self.headers
             .insert("Content-ID".to_string(), MessageId::new(value).into());
         self
     }
 
+    /// Set the Content-Location header of a MIME part.
     pub fn location(mut self, value: &'x str) -> Self {
         self.headers
             .insert("Content-Location".to_string(), Raw::new(value).into());
         self
     }
 
+    /// Set custom headers of a MIME part.
     pub fn header(mut self, header: &str, value: HeaderType<'x>) -> Self {
         self.headers.insert(header.to_string(), value);
         self
     }
 
+    /// Write the MIME part to a writer.
     pub fn write_part(self, mut output: impl Write) -> io::Result<usize> {
         let mut stack = Vec::new();
         let mut it = vec![self].into_iter();
@@ -185,7 +221,7 @@ impl<'x> MimePart<'x> {
                                 quoted_printable_encode(text.as_bytes(), &mut output, false)?;
                             }
                             EncodingType::None => {
-                                output.write_all(b"\r\n")?;
+                                output.write_all(b"Content-Transfer-Encoding: 7bit\r\n\r\n")?;
                                 output.write_all(text.as_bytes())?;
                             }
                         }

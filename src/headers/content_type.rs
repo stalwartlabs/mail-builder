@@ -1,15 +1,28 @@
+/*
+ * Copyright Stalwart Labs, Minter Ltd. See the COPYING
+ * file at the top-level directory of this distribution.
+ *
+ * Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
+ * https://www.apache.org/licenses/LICENSE-2.0> or the MIT license
+ * <LICENSE-MIT or https://opensource.org/licenses/MIT>, at your
+ * option. This file may not be copied, modified, or distributed
+ * except according to those terms.
+ */
+
 use std::collections::HashMap;
 
 use crate::encoders::encode::rfc2047_encode;
 
 use super::Header;
 
+/// MIME Content-Type or Content-Disposition header
 pub struct ContentType<'x> {
     pub c_type: &'x str,
     pub attributes: HashMap<&'x str, &'x str>,
 }
 
 impl<'x> ContentType<'x> {
+    /// Create a new Content-Type or Content-Disposition header
     pub fn new(c_type: &'x str) -> Self {
         Self {
             c_type,
@@ -17,6 +30,7 @@ impl<'x> ContentType<'x> {
         }
     }
 
+    /// Set a Content-Type / Content-Disposition attribute
     pub fn attribute(mut self, key: &'x str, value: &'x str) -> Self {
         self.attributes.insert(key, value);
         self

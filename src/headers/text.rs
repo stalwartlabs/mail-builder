@@ -1,3 +1,14 @@
+/*
+ * Copyright Stalwart Labs, Minter Ltd. See the COPYING
+ * file at the top-level directory of this distribution.
+ *
+ * Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
+ * https://www.apache.org/licenses/LICENSE-2.0> or the MIT license
+ * <LICENSE-MIT or https://opensource.org/licenses/MIT>, at your
+ * option. This file may not be copied, modified, or distributed
+ * except according to those terms.
+ */
+
 use crate::encoders::{
     base64::base64_encode,
     encode::{get_encoding_type, EncodingType},
@@ -6,13 +17,21 @@ use crate::encoders::{
 
 use super::Header;
 
+/// Unstructured text e-mail header.
 pub struct Text<'x> {
     pub text: &'x str,
 }
 
 impl<'x> Text<'x> {
+    /// Create a new unstructured text header
     pub fn new(text: &'x str) -> Self {
         Self { text }
+    }
+}
+
+impl<'x> From<&'x str> for Text<'x> {
+    fn from(value: &'x str) -> Self {
+        Self::new(value)
     }
 }
 

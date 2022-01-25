@@ -19,7 +19,7 @@ fn main() {
 
     message.from(Address::new_address("John Doe".into(), "john@doe.com"));
     message.to(Address::new_address("Jane Doe".into(), "jane@doe.com"));
-    message.subject("Nested multipart message".into());
+    message.subject("Nested multipart message");
 
     // Define the nested MIME body structure
     message.body(MimePart::new_multipart(

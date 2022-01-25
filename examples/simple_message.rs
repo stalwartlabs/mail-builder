@@ -14,9 +14,9 @@ use mail_builder::MessageBuilder;
 fn main() {
     // Build a simple text message with a single attachment
     let mut message = MessageBuilder::new();
-    message.from(("John Doe", "john@doe.com").into());
-    message.to("jane@doe.com".into());
-    message.subject("Hello, world!".into());
+    message.from(("John Doe", "john@doe.com"));
+    message.to("jane@doe.com");
+    message.subject("Hello, world!");
     message.text_body("Message contents go here.");
     message.binary_attachment("image/png", "image.png", &[1, 2, 3, 4]);
 

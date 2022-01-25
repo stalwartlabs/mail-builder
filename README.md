@@ -13,10 +13,10 @@ Building e-mail messages is straightforward:
 ```rust
     // Build a simple text message with a single attachment
     let mut message = MessageBuilder::new();
-    message.from(("John Doe", "john@doe.com").into());
-    message.to("jane@doe.com".into());
-    message.subject("Hello, world!".into());
-    message.text_body("Text body contents go here.");
+    message.from(("John Doe", "john@doe.com"));
+    message.to("jane@doe.com");
+    message.subject("Hello, world!");
+    message.text_body("Message contents go here.");
     message.binary_attachment("image/png", "image.png", &[1, 2, 3, 4]);
 
     // Write message to memory
@@ -31,56 +31,47 @@ multipart/alternative sections can also be easily built:
     // Build a multipart message with text and HTML bodies,
     // inline parts and attachments.
     let mut message = MessageBuilder::new();
-    message.from(("John Doe", "john@doe.com").into());
+    message.from(("John Doe", "john@doe.com"));
 
     // To recipients
     message.to(vec![
-        ("Antoine de Saint-Exupéry", "antoine@exupery.com").into(),
-        ("안녕하세요 세계", "test@test.com").into(),
-        ("Xin chào", "addr@addr.com").into(),
-    ]
-    .into());
+        ("Antoine de Saint-Exupéry", "antoine@exupery.com"),
+        ("안녕하세요 세계", "test@test.com"),
+        ("Xin chào", "addr@addr.com"),
+    ]);
 
     // BCC recipients using grouped addresses
-    message.bcc(
-        vec![
-            (
-                "My Group",
-                vec![
-                    ("ASCII name", "addr1@addr7.com").into(),
-                    ("ハロー・ワールド", "addr2@addr6.com").into(),
-                    ("áéíóú", "addr3@addr5.com").into(),
-                    ("Γειά σου Κόσμε", "addr4@addr4.com").into(),
-                ],
-            )
-                .into(),
-            (
-                "Another Group",
-                vec![
-                    ("שלום עולם", "addr5@addr3.com").into(),
-                    ("ñandú come ñoquis", "addr6@addr2.com").into(),
-                    "addr7@addr1.com".into(),
-                ],
-            )
-                .into(),
-        ]
-        .into(),
-    );
+    message.bcc(vec![
+        (
+            "My Group",
+            vec![
+                ("ASCII name", "addr1@addr7.com"),
+                ("ハロー・ワールド", "addr2@addr6.com"),
+                ("áéíóú", "addr3@addr5.com"),
+                ("Γειά σου Κόσμε", "addr4@addr4.com"),
+            ],
+        ),
+        (
+            "Another Group",
+            vec![
+                ("שלום עולם", "addr5@addr3.com"),
+                ("ñandú come ñoquis", "addr6@addr2.com"),
+                ("Recipient", "addr7@addr1.com"),
+            ],
+        ),
+    ]);
 
     // Set RFC and custom headers
-    message.subject("Testing multipart messages".into());
-    message.in_reply_to(vec!["message-id-1", "message-id-2"].into());
-    message.header(
-        "List-Archive",
-        URL::new("http://example.com/archive").into(),
-    );
+    message.subject("Testing multipart messages");
+    message.in_reply_to(vec!["message-id-1", "message-id-2"]);
+    message.header("List-Archive", URL::new("http://example.com/archive"));
 
     // Set HTML and plain text bodies
     message.text_body("This is the text body!\n");
-    message.html_body("<p>HTML body with <img src=\"my-image\"/>!</p>");
+    message.html_body("<p>HTML body with <img src=\"cid:my-image\"/>!</p>");
 
     // Include an embedded image as an inline part
-    message.binary_inline("image/png", "my-image", &[0, 1, 2, 3, 4, 5]);
+    message.binary_inline("image/png", "cid:my-image", &[0, 1, 2, 3, 4, 5]);
 
     // Add a text and a binary attachment
     message.text_attachment("text/plain", "my fíle.txt", "Attachment contents go here.");
@@ -104,7 +95,7 @@ Nested MIME body structures can be created using the `body` method:
 
     message.from(Address::new_address("John Doe".into(), "john@doe.com"));
     message.to(Address::new_address("Jane Doe".into(), "jane@doe.com"));
-    message.subject("Nested multipart message".into());
+    message.subject("Nested multipart message");
 
     // Define the nested MIME body structure
     message.body(MimePart::new_multipart(

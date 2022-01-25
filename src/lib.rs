@@ -26,10 +26,10 @@
 //!
 //!     // Build a simple text message with a single attachment
 //!     let mut message = MessageBuilder::new();
-//!     message.from(("John Doe", "john@doe.com").into());
-//!     message.to("jane@doe.com".into());
-//!     message.subject("Hello, world!".into());
-//!     message.text_body("Text body contents go here.");
+//!     message.from(("John Doe", "john@doe.com"));
+//!     message.to("jane@doe.com");
+//!     message.subject("Hello, world!");
+//!     message.text_body("Message contents go here.");
 //!     message.binary_attachment("image/png", "image.png", &[1, 2, 3, 4]);
 //!
 //!     // Write message to memory
@@ -47,56 +47,47 @@
 //!     // Build a multipart message with text and HTML bodies,
 //!     // inline parts and attachments.
 //!     let mut message = MessageBuilder::new();
-//!     message.from(("John Doe", "john@doe.com").into());
+//!     message.from(("John Doe", "john@doe.com"));
 //!
 //!     // To recipients
 //!     message.to(vec![
-//!         ("Antoine de Saint-Exupéry", "antoine@exupery.com").into(),
-//!         ("안녕하세요 세계", "test@test.com").into(),
-//!         ("Xin chào", "addr@addr.com").into(),
-//!     ]
-//!     .into());
+//!         ("Antoine de Saint-Exupéry", "antoine@exupery.com"),
+//!         ("안녕하세요 세계", "test@test.com"),
+//!         ("Xin chào", "addr@addr.com"),
+//!     ]);
 //!
 //!     // BCC recipients using grouped addresses
-//!     message.bcc(
-//!         vec![
-//!             (
-//!                 "My Group",
-//!                 vec![
-//!                     ("ASCII name", "addr1@addr7.com").into(),
-//!                     ("ハロー・ワールド", "addr2@addr6.com").into(),
-//!                     ("áéíóú", "addr3@addr5.com").into(),
-//!                     ("Γειά σου Κόσμε", "addr4@addr4.com").into(),
-//!                 ],
-//!             )
-//!                 .into(),
-//!             (
-//!                 "Another Group",
-//!                 vec![
-//!                     ("שלום עולם", "addr5@addr3.com").into(),
-//!                     ("ñandú come ñoquis", "addr6@addr2.com").into(),
-//!                     "addr7@addr1.com".into(),
-//!                 ],
-//!             )
-//!                 .into(),
-//!         ]
-//!         .into(),
-//!     );
+//!     message.bcc(vec![
+//!         (
+//!             "My Group",
+//!             vec![
+//!                 ("ASCII name", "addr1@addr7.com"),
+//!                 ("ハロー・ワールド", "addr2@addr6.com"),
+//!                 ("áéíóú", "addr3@addr5.com"),
+//!                 ("Γειά σου Κόσμε", "addr4@addr4.com"),
+//!             ],
+//!         ),
+//!         (
+//!             "Another Group",
+//!             vec![
+//!                 ("שלום עולם", "addr5@addr3.com"),
+//!                 ("ñandú come ñoquis", "addr6@addr2.com"),
+//!                 ("Recipient", "addr7@addr1.com"),
+//!             ],
+//!         ),
+//!     ]);
 //!
 //!     // Set RFC and custom headers
-//!     message.subject("Testing multipart messages".into());
-//!     message.in_reply_to(vec!["message-id-1", "message-id-2"].into());
-//!     message.header(
-//!         "List-Archive",
-//!         URL::new("http://example.com/archive").into(),
-//!     );
+//!     message.subject("Testing multipart messages");
+//!     message.in_reply_to(vec!["message-id-1", "message-id-2"]);
+//!     message.header("List-Archive", URL::new("http://example.com/archive"));
 //!
 //!     // Set HTML and plain text bodies
 //!     message.text_body("This is the text body!\n");
-//!     message.html_body("<p>HTML body with <img src=\"my-image\"/>!</p>");
+//!     message.html_body("<p>HTML body with <img src=\"cid:my-image\"/>!</p>");
 //!
 //!     // Include an embedded image as an inline part
-//!     message.binary_inline("image/png", "my-image", &[0, 1, 2, 3, 4, 5]);
+//!     message.binary_inline("image/png", "cid:my-image", &[0, 1, 2, 3, 4, 5]);
 //!
 //!     // Add a text and a binary attachment
 //!     message.text_attachment("text/plain", "my fíle.txt", "Attachment contents go here.");
@@ -123,7 +114,7 @@
 //!
 //!     message.from(Address::new_address("John Doe".into(), "john@doe.com"));
 //!     message.to(Address::new_address("Jane Doe".into(), "jane@doe.com"));
-//!     message.subject("Nested multipart message".into());
+//!     message.subject("Nested multipart message");
 //!
 //!     // Define the nested MIME body structure
 //!     message.body(MimePart::new_multipart(
@@ -208,7 +199,7 @@
 //!
 //! at your option.
 //!
-//! //! ## Copyright
+//! ## Copyright
 //!
 //! Copyright (C) 2020-2022, Stalwart Labs, Minter Ltd.
 //!
@@ -261,67 +252,67 @@ impl<'x> MessageBuilder<'x> {
 
     /// Set the Message-ID header. If no Message-ID header is set, one will be
     /// generated automatically.
-    pub fn message_id(&mut self, value: MessageId<'x>) {
+    pub fn message_id(&mut self, value: impl Into<MessageId<'x>>) {
         self.header("Message-ID", value.into());
     }
 
     /// Set the In-Reply-To header.
-    pub fn in_reply_to(&mut self, value: MessageId<'x>) {
+    pub fn in_reply_to(&mut self, value: impl Into<MessageId<'x>>) {
         self.header("In-Reply-To", value.into());
     }
 
     /// Set the References header.
-    pub fn references(&mut self, value: MessageId<'x>) {
+    pub fn references(&mut self, value: impl Into<MessageId<'x>>) {
         self.header("References", value.into());
     }
 
     /// Set the Sender header.
-    pub fn sender(&mut self, value: Address<'x>) {
+    pub fn sender(&mut self, value: impl Into<Address<'x>>) {
         self.header("Sender", value.into());
     }
 
     /// Set the From header.
-    pub fn from(&mut self, value: Address<'x>) {
+    pub fn from(&mut self, value: impl Into<Address<'x>>) {
         self.header("From", value.into());
     }
 
     /// Set the To header.
-    pub fn to(&mut self, value: Address<'x>) {
+    pub fn to(&mut self, value: impl Into<Address<'x>>) {
         self.header("To", value.into());
     }
 
     /// Set the Cc header.
-    pub fn cc(&mut self, value: Address<'x>) {
+    pub fn cc(&mut self, value: impl Into<Address<'x>>) {
         self.header("Cc", value.into());
     }
 
     /// Set the Bcc header.
-    pub fn bcc(&mut self, value: Address<'x>) {
+    pub fn bcc(&mut self, value: impl Into<Address<'x>>) {
         self.header("Bcc", value.into());
     }
 
     /// Set the Reply-To header.
-    pub fn reply_to(&mut self, value: Address<'x>) {
+    pub fn reply_to(&mut self, value: impl Into<Address<'x>>) {
         self.header("Reply-To", value.into());
     }
 
     /// Set the Subject header.
-    pub fn subject(&mut self, value: Text<'x>) {
+    pub fn subject(&mut self, value: impl Into<Text<'x>>) {
         self.header("From", value.into());
     }
 
     /// Set the Date header. If no Date header is set, one will be generated
     /// automatically.
-    pub fn date(&mut self, value: Date) {
+    pub fn date(&mut self, value: impl Into<Date>) {
         self.header("Date", value.into());
     }
 
     /// Add a custom header.
-    pub fn header(&mut self, header: &str, value: HeaderType<'x>) {
+    pub fn header(&mut self, header: &str, value: impl Into<HeaderType<'x>>) {
         self.headers
             .entry(header.to_string())
             .or_insert_with(Vec::new)
-            .push(value);
+            .push(value.into());
     }
 
     /// Set the plain text body of the message. Note that only one plain text body
@@ -455,7 +446,7 @@ mod tests {
 
         message.from(Address::new_address("John Doe".into(), "john@doe.com"));
         message.to(Address::new_address("Jane Doe".into(), "jane@doe.com"));
-        message.subject("RFC 8621 Section 4.1.4 test".into());
+        message.subject("RFC 8621 Section 4.1.4 test");
 
         message.body(MimePart::new_multipart(
             "multipart/mixed",
@@ -516,42 +507,33 @@ mod tests {
     #[test]
     fn build_message() {
         let mut message = MessageBuilder::new();
-        message.from(("John Doe", "john@doe.com").into());
+        message.from(("John Doe", "john@doe.com"));
         message.to(vec![
-            ("Antoine de Saint-Exupéry", "antoine@exupery.com").into(),
-            ("안녕하세요 세계", "test@test.com").into(),
-            ("Xin chào", "addr@addr.com").into(),
-        ]
-        .into());
-        message.bcc(
-            vec![
-                (
-                    "Привет, мир",
-                    vec![
-                        ("ASCII recipient", "addr1@addr7.com").into(),
-                        ("ハロー・ワールド", "addr2@addr6.com").into(),
-                        ("áéíóú", "addr3@addr5.com").into(),
-                        ("Γειά σου Κόσμε", "addr4@addr4.com").into(),
-                    ],
-                )
-                    .into(),
-                (
-                    "Hello world",
-                    vec![
-                        ("שלום עולם", "addr5@addr3.com").into(),
-                        ("¡El ñandú comió ñoquis!", "addr6@addr2.com").into(),
-                        "addr7@addr1.com".into(),
-                    ],
-                )
-                    .into(),
-            ]
-            .into(),
-        );
-        message.header(
-            "List-Archive",
-            URL::new("http://example.com/archive").into(),
-        );
-        message.subject("Hello world!".into());
+            ("Antoine de Saint-Exupéry", "antoine@exupery.com"),
+            ("안녕하세요 세계", "test@test.com"),
+            ("Xin chào", "addr@addr.com"),
+        ]);
+        message.bcc(vec![
+            (
+                "Привет, мир",
+                vec![
+                    ("ASCII recipient", "addr1@addr7.com"),
+                    ("ハロー・ワールド", "addr2@addr6.com"),
+                    ("áéíóú", "addr3@addr5.com"),
+                    ("Γειά σου Κόσμε", "addr4@addr4.com"),
+                ],
+            ),
+            (
+                "Hello world",
+                vec![
+                    ("שלום עולם", "addr5@addr3.com"),
+                    ("¡El ñandú comió ñoquis!", "addr6@addr2.com"),
+                    ("Recipient", "addr7@addr1.com"),
+                ],
+            ),
+        ]);
+        message.header("List-Archive", URL::new("http://example.com/archive"));
+        message.subject("Hello world!");
 
         let text_body = "Hello, world!\n".repeat(20);
         let html_body = "<p>¡Hola Mundo!</p>".repeat(20);

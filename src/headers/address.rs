@@ -74,17 +74,23 @@ impl<'x> From<&'x str> for Address<'x> {
     }
 }
 
-impl<'x> From<Vec<Address<'x>>> for Address<'x> {
-    fn from(value: Vec<Address<'x>>) -> Self {
-        Address::new_list(value)
+impl<'x, T> From<Vec<T>> for Address<'x>
+where
+    T: Into<Address<'x>>,
+{
+    fn from(value: Vec<T>) -> Self {
+        Address::new_list(value.into_iter().map(|x| x.into()).collect())
     }
 }
 
-impl<'x> From<(&'x str, Vec<Address<'x>>)> for Address<'x> {
-    fn from(value: (&'x str, Vec<Address<'x>>)) -> Self {
+impl<'x, T> From<(&'x str, Vec<T>)> for Address<'x>
+where
+    T: Into<Address<'x>>,
+{
+    fn from(value: (&'x str, Vec<T>)) -> Self {
         Address::Group(GroupedAddresses {
             name: value.0.into(),
-            addresses: value.1,
+            addresses: value.1.into_iter().map(|x| x.into()).collect(),
         })
     }
 }

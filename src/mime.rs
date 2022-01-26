@@ -202,8 +202,12 @@ impl<'x> MimePart<'x> {
     }
 
     /// Set custom headers of a MIME part.
-    pub fn header(mut self, header: impl Into<Cow<'x, str>>, value: HeaderType<'x>) -> Self {
-        self.headers.insert(header.into(), value);
+    pub fn header(
+        mut self,
+        header: impl Into<Cow<'x, str>>,
+        value: impl Into<HeaderType<'x>>,
+    ) -> Self {
+        self.headers.insert(header.into(), value.into());
         self
     }
 

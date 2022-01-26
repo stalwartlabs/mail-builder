@@ -333,8 +333,8 @@ impl<'x> MessageBuilder<'x> {
     /// Add a binary attachment to the message.
     pub fn binary_attachment(
         &mut self,
-        content_type: &'x str,
-        filename: &'x str,
+        content_type: impl Into<Cow<'x, str>>,
+        filename: impl Into<Cow<'x, str>>,
         value: impl Into<Cow<'x, [u8]>>,
     ) {
         self.attachments
@@ -345,8 +345,8 @@ impl<'x> MessageBuilder<'x> {
     /// Add a text attachment to the message.
     pub fn text_attachment(
         &mut self,
-        content_type: &'x str,
-        filename: &'x str,
+        content_type: impl Into<Cow<'x, str>>,
+        filename: impl Into<Cow<'x, str>>,
         value: impl Into<Cow<'x, str>>,
     ) {
         self.attachments
@@ -357,8 +357,8 @@ impl<'x> MessageBuilder<'x> {
     /// Add an inline binary to the message.
     pub fn binary_inline(
         &mut self,
-        content_type: &'x str,
-        cid: &'x str,
+        content_type: impl Into<Cow<'x, str>>,
+        cid: impl Into<Cow<'x, str>>,
         value: impl Into<Cow<'x, [u8]>>,
     ) {
         self.attachments

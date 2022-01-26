@@ -30,7 +30,7 @@
 //!     message.to("jane@doe.com");
 //!     message.subject("Hello, world!");
 //!     message.text_body("Message contents go here.");
-//!     message.binary_attachment("image/png", "image.png", &[1, 2, 3, 4]);
+//!     message.binary_attachment("image/png", "image.png", [1, 2, 3, 4].as_ref());
 //!
 //!     // Write message to memory
 //!     let mut output = Vec::new();
@@ -87,14 +87,14 @@
 //!     message.html_body("<p>HTML body with <img src=\"cid:my-image\"/>!</p>");
 //!
 //!     // Include an embedded image as an inline part
-//!     message.binary_inline("image/png", "cid:my-image", &[0, 1, 2, 3, 4, 5]);
+//!     message.binary_inline("image/png", "cid:my-image", [0, 1, 2, 3, 4, 5].as_ref());
 //!
 //!     // Add a text and a binary attachment
 //!     message.text_attachment("text/plain", "my fíle.txt", "Attachment contents go here.");
 //!     message.binary_attachment(
 //!         "text/plain",
 //!         "ハロー・ワールド",
-//!         b"Binary contents go here.",
+//!         b"Binary contents go here.".as_ref(),
 //!     );
 //!
 //!     // Write the message to a file
@@ -213,6 +213,7 @@ pub mod headers;
 pub mod mime;
 
 use std::{
+    borrow::Cow,
     collections::HashMap,
     io::{self, Write},
 };
@@ -225,7 +226,7 @@ use mime::{make_boundary, MimePart};
 
 /// Builds a RFC5322 compliant MIME email message.
 pub struct MessageBuilder<'x> {
-    pub headers: HashMap<String, Vec<HeaderType<'x>>>,
+    pub headers: HashMap<Cow<'x, str>, Vec<HeaderType<'x>>>,
     pub html_body: Option<MimePart<'x>>,
     pub text_body: Option<MimePart<'x>>,
     pub attachments: Option<Vec<MimePart<'x>>>,
@@ -308,9 +309,9 @@ impl<'x> MessageBuilder<'x> {
     }
 
     /// Add a custom header.
-    pub fn header(&mut self, header: &str, value: impl Into<HeaderType<'x>>) {
+    pub fn header(&mut self, header: impl Into<Cow<'x, str>>, value: impl Into<HeaderType<'x>>) {
         self.headers
-            .entry(header.to_string())
+            .entry(header.into())
             .or_insert_with(Vec::new)
             .push(value.into());
     }
@@ -318,33 +319,48 @@ impl<'x> MessageBuilder<'x> {
     /// Set the plain text body of the message. Note that only one plain text body
     /// per message can be set using this function.
     /// To build more complex MIME body structures, use the `body` method instead.
-    pub fn text_body(&mut self, value: &'x str) {
+    pub fn text_body(&mut self, value: impl Into<Cow<'x, str>>) {
         self.text_body = Some(MimePart::new_text(value));
     }
 
     /// Set the HTML body of the message. Note that only one HTML body
     /// per message can be set using this function.
     /// To build more complex MIME body structures, use the `body` method instead.
-    pub fn html_body(&mut self, value: &'x str) {
+    pub fn html_body(&mut self, value: impl Into<Cow<'x, str>>) {
         self.html_body = Some(MimePart::new_html(value));
     }
 
     /// Add a binary attachment to the message.
-    pub fn binary_attachment(&mut self, content_type: &'x str, filename: &'x str, value: &'x [u8]) {
+    pub fn binary_attachment(
+        &mut self,
+        content_type: &'x str,
+        filename: &'x str,
+        value: impl Into<Cow<'x, [u8]>>,
+    ) {
         self.attachments
             .get_or_insert_with(Vec::new)
             .push(MimePart::new_binary(content_type, value).attachment(filename));
     }
 
     /// Add a text attachment to the message.
-    pub fn text_attachment(&mut self, content_type: &'x str, filename: &'x str, value: &'x str) {
+    pub fn text_attachment(
+        &mut self,
+        content_type: &'x str,
+        filename: &'x str,
+        value: impl Into<Cow<'x, str>>,
+    ) {
         self.attachments
             .get_or_insert_with(Vec::new)
             .push(MimePart::new_text_other(content_type, value).attachment(filename));
     }
 
     /// Add an inline binary to the message.
-    pub fn binary_inline(&mut self, content_type: &'x str, cid: &'x str, value: &'x [u8]) {
+    pub fn binary_inline(
+        &mut self,
+        content_type: &'x str,
+        cid: &'x str,
+        value: impl Into<Cow<'x, [u8]>>,
+    ) {
         self.attachments
             .get_or_insert_with(Vec::new)
             .push(MimePart::new_binary(content_type, value).inline().cid(cid));
@@ -535,15 +551,15 @@ mod tests {
         message.header("List-Archive", URL::new("http://example.com/archive"));
         message.subject("Hello world!");
 
-        let text_body = "Hello, world!\n".repeat(20);
-        let html_body = "<p>¡Hola Mundo!</p>".repeat(20);
-        let attachments = vec!["안녕하세요 세계".repeat(20), "ハロー・ワールド".repeat(20)];
-
-        message.text_body(&text_body);
-        message.html_body(&html_body);
-        message.binary_inline("image/png", "cid:image", &[0, 1, 2, 3, 4, 5]);
-        message.text_attachment("text/plain", "my fíle.txt", &attachments[0]);
-        message.binary_attachment("text/plain", "ハロー・ワールド", attachments[1].as_bytes());
+        message.text_body("Hello, world!\n".repeat(20));
+        message.html_body("<p>¡Hola Mundo!</p>".repeat(20));
+        message.binary_inline("image/png", "cid:image", [0, 1, 2, 3, 4, 5].as_ref());
+        message.text_attachment("text/plain", "my fíle.txt", "안녕하세요 세계".repeat(20));
+        message.binary_attachment(
+            "text/plain",
+            "ハロー・ワールド",
+            "ハロー・ワールド".repeat(20).into_bytes(),
+        );
 
         let mut output = Vec::new();
         message.write_to(&mut output).unwrap();

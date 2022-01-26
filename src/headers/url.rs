@@ -9,22 +9,32 @@
  * except according to those terms.
  */
 
+use std::borrow::Cow;
+
 use super::Header;
 
 /// URL header, used mostly on List-* headers
 pub struct URL<'x> {
-    pub url: Vec<&'x str>,
+    pub url: Vec<Cow<'x, str>>,
 }
 
 impl<'x> URL<'x> {
     /// Create a new URL header
-    pub fn new(url: &'x str) -> Self {
-        Self { url: vec![url] }
+    pub fn new(url: impl Into<Cow<'x, str>>) -> Self {
+        Self {
+            url: vec![url.into()],
+        }
     }
 
     /// Create a new multi-value URL header
-    pub fn new_list(urls: &[&'x str]) -> Self {
-        Self { url: urls.to_vec() }
+    pub fn new_list<T, U>(urls: T) -> Self
+    where
+        T: Iterator<Item = U>,
+        U: Into<Cow<'x, str>>,
+    {
+        Self {
+            url: urls.map(|s| s.into()).collect(),
+        }
     }
 }
 
@@ -34,15 +44,28 @@ impl<'x> From<&'x str> for URL<'x> {
     }
 }
 
-impl<'x> From<&[&'x str]> for URL<'x> {
-    fn from(value: &[&'x str]) -> Self {
-        Self::new_list(value)
+impl<'x> From<String> for URL<'x> {
+    fn from(value: String) -> Self {
+        Self::new(value)
     }
 }
 
-impl<'x> From<Vec<&'x str>> for URL<'x> {
-    fn from(value: Vec<&'x str>) -> Self {
-        URL { url: value }
+impl<'x> From<&[&'x str]> for URL<'x> {
+    fn from(value: &[&'x str]) -> Self {
+        URL {
+            url: value.iter().map(|&s| s.into()).collect(),
+        }
+    }
+}
+
+impl<'x, T> From<Vec<T>> for URL<'x>
+where
+    T: Into<Cow<'x, str>>,
+{
+    fn from(value: Vec<T>) -> Self {
+        URL {
+            url: value.into_iter().map(|s| s.into()).collect(),
+        }
     }
 }
 

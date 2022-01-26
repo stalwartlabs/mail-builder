@@ -71,14 +71,14 @@ multipart/alternative sections can also be easily built:
     message.html_body("<p>HTML body with <img src=\"cid:my-image\"/>!</p>");
 
     // Include an embedded image as an inline part
-    message.binary_inline("image/png", "cid:my-image", &[0, 1, 2, 3, 4, 5]);
+    message.binary_inline("image/png", "cid:my-image", [0, 1, 2, 3, 4, 5].as_ref());
 
     // Add a text and a binary attachment
     message.text_attachment("text/plain", "my fíle.txt", "Attachment contents go here.");
     message.binary_attachment(
         "text/plain",
         "ハロー・ワールド",
-        b"Binary contents go here.",
+        b"Binary contents go here.".as_ref(),
     );
 
     // Write the message to a file

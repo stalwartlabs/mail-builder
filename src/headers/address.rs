@@ -9,19 +9,21 @@
  * except according to those terms.
  */
 
+use std::borrow::Cow;
+
 use crate::encoders::encode::rfc2047_encode;
 
 use super::Header;
 
 /// RFC5322 e-mail address
 pub struct EmailAddress<'x> {
-    pub name: Option<&'x str>,
-    pub email: &'x str,
+    pub name: Option<Cow<'x, str>>,
+    pub email: Cow<'x, str>,
 }
 
 /// RFC5322 grouped e-mail addresses
 pub struct GroupedAddresses<'x> {
-    pub name: Option<&'x str>,
+    pub name: Option<Cow<'x, str>>,
     pub addresses: Vec<Address<'x>>,
 }
 
@@ -34,13 +36,22 @@ pub enum Address<'x> {
 
 impl<'x> Address<'x> {
     /// Create an RFC5322 e-mail address
-    pub fn new_address(name: Option<&'x str>, email: &'x str) -> Self {
-        Address::Address(EmailAddress { name, email })
+    pub fn new_address(
+        name: Option<impl Into<Cow<'x, str>>>,
+        email: impl Into<Cow<'x, str>>,
+    ) -> Self {
+        Address::Address(EmailAddress {
+            name: name.map(|v| v.into()),
+            email: email.into(),
+        })
     }
 
     /// Create an RFC5322 grouped e-mail address
-    pub fn new_group(name: Option<&'x str>, addresses: Vec<Address<'x>>) -> Self {
-        Address::Group(GroupedAddresses { name, addresses })
+    pub fn new_group(name: Option<impl Into<Cow<'x, str>>>, addresses: Vec<Address<'x>>) -> Self {
+        Address::Group(GroupedAddresses {
+            name: name.map(|v| v.into()),
+            addresses,
+        })
     }
 
     /// Create an address list
@@ -59,8 +70,17 @@ impl<'x> Address<'x> {
 impl<'x> From<(&'x str, &'x str)> for Address<'x> {
     fn from(value: (&'x str, &'x str)) -> Self {
         Address::Address(EmailAddress {
-            name: value.0.into(),
-            email: value.1,
+            name: Some(value.0.into()),
+            email: value.1.into(),
+        })
+    }
+}
+
+impl<'x> From<(String, String)> for Address<'x> {
+    fn from(value: (String, String)) -> Self {
+        Address::Address(EmailAddress {
+            name: Some(value.0.into()),
+            email: value.1.into(),
         })
     }
 }
@@ -69,7 +89,16 @@ impl<'x> From<&'x str> for Address<'x> {
     fn from(value: &'x str) -> Self {
         Address::Address(EmailAddress {
             name: None,
-            email: value,
+            email: value.into(),
+        })
+    }
+}
+
+impl<'x> From<String> for Address<'x> {
+    fn from(value: String) -> Self {
+        Address::Address(EmailAddress {
+            name: None,
+            email: value.into(),
         })
     }
 }
@@ -83,13 +112,14 @@ where
     }
 }
 
-impl<'x, T> From<(&'x str, Vec<T>)> for Address<'x>
+impl<'x, T, U> From<(U, Vec<T>)> for Address<'x>
 where
     T: Into<Address<'x>>,
+    U: Into<Cow<'x, str>>,
 {
-    fn from(value: (&'x str, Vec<T>)) -> Self {
+    fn from(value: (U, Vec<T>)) -> Self {
         Address::Group(GroupedAddresses {
-            name: value.0.into(),
+            name: Some(value.0.into()),
             addresses: value.1.into_iter().map(|x| x.into()).collect(),
         })
     }
@@ -113,9 +143,13 @@ impl<'x> Header for Address<'x> {
                     if bytes_written
                         + (match address {
                             Address::Address(address) => {
-                                address.email.len() + address.name.map_or(0, |n| n.len() + 3) + 2
+                                address.email.len()
+                                    + address.name.as_ref().map_or(0, |n| n.len() + 3)
+                                    + 2
                             }
-                            Address::Group(group) => group.name.map_or(0, |name| name.len() + 2),
+                            Address::Group(group) => {
+                                group.name.as_ref().map_or(0, |name| name.len() + 2)
+                            }
                             Address::List(_) => 0,
                         })
                         >= 76
@@ -188,7 +222,10 @@ impl<'x> Header for GroupedAddresses<'x> {
         for (pos, address) in self.addresses.iter().enumerate() {
             let address = address.unwrap_address();
 
-            if bytes_written + address.email.len() + address.name.map_or(0, |n| n.len() + 3) + 2
+            if bytes_written
+                + address.email.len()
+                + address.name.as_ref().map_or(0, |n| n.len() + 3)
+                + 2
                 >= 76
             {
                 output.write_all(b"\r\n\t")?;

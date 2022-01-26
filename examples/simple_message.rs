@@ -18,7 +18,7 @@ fn main() {
     message.to("jane@doe.com");
     message.subject("Hello, world!");
     message.text_body("Message contents go here.");
-    message.binary_attachment("image/png", "image.png", &[1, 2, 3, 4]);
+    message.binary_attachment("image/png", "image.png", [1, 2, 3, 4].as_ref());
 
     // Write message to memory
     let mut output = Vec::new();

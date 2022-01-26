@@ -227,31 +227,24 @@ impl<'x> MimePart<'x> {
                             output.write_all(b": ")?;
                             header_value.write_header(&mut output, header_name.len() + 2)?;
                         }
-                        match get_encoding_type(text.as_ref(), false) {
-                            EncodingType::Base64 => {
-                                output.write_all(b"Content-Transfer-Encoding: base64\r\n\r\n")?;
-                                base64_encode(text.as_bytes(), &mut output, false)?;
-                            }
-                            EncodingType::QuotedPrintable(_) => {
-                                output.write_all(
-                                    b"Content-Transfer-Encoding: quoted-printable\r\n\r\n",
-                                )?;
-                                quoted_printable_encode(text.as_bytes(), &mut output, false)?;
-                            }
-                            EncodingType::None => {
-                                output.write_all(b"Content-Transfer-Encoding: 7bit\r\n\r\n")?;
-                                output.write_all(text.as_bytes())?;
-                            }
-                        }
+                        detect_encoding(text.as_bytes(), &mut output)?;
                     }
                     BodyPart::Binary(binary) => {
+                        let mut is_text = false;
                         for (header_name, header_value) in &part.headers {
                             output.write_all(header_name.as_bytes())?;
                             output.write_all(b": ")?;
+                            if !is_text && header_name == "Content-Type" {
+                                is_text = header_value.as_content_type().unwrap().is_text();
+                            }
                             header_value.write_header(&mut output, header_name.len() + 2)?;
                         }
-                        output.write_all(b"Content-Transfer-Encoding: base64\r\n\r\n")?;
-                        base64_encode(binary.as_ref(), &mut output, false)?;
+                        if !is_text {
+                            output.write_all(b"Content-Transfer-Encoding: base64\r\n\r\n")?;
+                            base64_encode(binary.as_ref(), &mut output, false)?;
+                        } else {
+                            detect_encoding(binary.as_ref(), &mut output)?;
+                        }
                     }
                     BodyPart::Multipart(parts) => {
                         if boundary.is_some() {
@@ -296,4 +289,22 @@ impl<'x> MimePart<'x> {
         }
         Ok(0)
     }
+}
+
+fn detect_encoding(input: &[u8], mut output: impl Write) -> io::Result<()> {
+    match get_encoding_type(input, false) {
+        EncodingType::Base64 => {
+            output.write_all(b"Content-Transfer-Encoding: base64\r\n\r\n")?;
+            base64_encode(input, &mut output, false)?;
+        }
+        EncodingType::QuotedPrintable(_) => {
+            output.write_all(b"Content-Transfer-Encoding: quoted-printable\r\n\r\n")?;
+            quoted_printable_encode(input, &mut output, false)?;
+        }
+        EncodingType::None => {
+            output.write_all(b"Content-Transfer-Encoding: 7bit\r\n\r\n")?;
+            output.write_all(input)?;
+        }
+    }
+    Ok(())
 }

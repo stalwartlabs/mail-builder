@@ -90,3 +90,12 @@ impl<'x> Header for HeaderType<'x> {
         }
     }
 }
+
+impl<'x> HeaderType<'x> {
+    pub fn as_content_type(&self) -> Option<&ContentType> {
+        match self {
+            HeaderType::ContentType(value) => Some(value),
+            _ => None,
+        }
+    }
+}

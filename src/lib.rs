@@ -299,7 +299,7 @@ impl<'x> MessageBuilder<'x> {
 
     /// Set the Subject header.
     pub fn subject(&mut self, value: impl Into<Text<'x>>) {
-        self.header("From", value.into());
+        self.header("Subject", value.into());
     }
 
     /// Set the Date header. If no Date header is set, one will be generated

@@ -39,6 +39,11 @@ impl<'x> ContentType<'x> {
         self.attributes.insert(key.into(), value.into());
         self
     }
+
+    /// Returns true when the part is text/*
+    pub fn is_text(&self) -> bool {
+        self.c_type.starts_with("text/")
+    }
 }
 
 impl<'x> Header for ContentType<'x> {

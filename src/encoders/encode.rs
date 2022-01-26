@@ -19,8 +19,7 @@ pub enum EncodingType {
     None,
 }
 
-pub fn get_encoding_type(input: &str, is_inline: bool) -> EncodingType {
-    let input = input.as_bytes();
+pub fn get_encoding_type(input: &[u8], is_inline: bool) -> EncodingType {
     let base64_len = (input.len() * 4 / 3 + 3) & !3;
     let mut qp_len = if !is_inline { input.len() / 76 } else { 0 };
     let mut is_ascii = true;
@@ -65,7 +64,7 @@ pub fn get_encoding_type(input: &str, is_inline: bool) -> EncodingType {
 }
 
 pub fn rfc2047_encode(input: &str, mut output: impl Write) -> io::Result<usize> {
-    Ok(match get_encoding_type(input, true) {
+    Ok(match get_encoding_type(input.as_bytes(), true) {
         EncodingType::Base64 => {
             output.write_all(b"\"=?utf-8?B?")?;
             let bytes_written = base64_encode(input.as_bytes(), &mut output, true)? + 14;

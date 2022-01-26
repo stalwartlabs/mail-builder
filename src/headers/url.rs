@@ -80,9 +80,14 @@ impl<'x> Header for URL<'x> {
             output.write_all(url.as_bytes())?;
             output.write_all(b">")?;
             bytes_written += url.len() + 2;
-            if bytes_written >= 76 && pos < self.url.len() - 1 {
-                output.write_all(b"\r\n\t")?;
-                bytes_written = 0;
+            if pos < self.url.len() - 1 {
+                if bytes_written >= 76 {
+                    output.write_all(b"\r\n\t")?;
+                    bytes_written = 1;
+                } else {
+                    output.write_all(b" ")?;
+                    bytes_written += 1;
+                }
             }
         }
         if bytes_written > 0 {

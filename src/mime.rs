@@ -18,6 +18,7 @@ use std::{
     hash::{Hash, Hasher},
     io::{self, Write},
     iter::FromIterator,
+    thread,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
@@ -73,6 +74,7 @@ impl<'x> From<Vec<u8>> for BodyPart<'x> {
 pub fn make_boundary() -> String {
     let mut s = DefaultHasher::new();
     gethostname::gethostname().hash(&mut s);
+    thread::current().id().hash(&mut s);
     format!(
         "{:x}_{:x}_{:x}",
         SystemTime::now()
@@ -209,6 +211,13 @@ impl<'x> MimePart<'x> {
     ) -> Self {
         self.headers.insert(header.into(), value.into());
         self
+    }
+
+    /// Add a body part to a multipart/* MIME part.
+    pub fn add_part(&mut self, part: MimePart<'x>) {
+        if let BodyPart::Multipart(ref mut parts) = self.contents {
+            parts.push(part);
+        }
     }
 
     /// Write the MIME part to a writer.

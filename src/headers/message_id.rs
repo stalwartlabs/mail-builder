@@ -76,12 +76,8 @@ impl<'x> Header for MessageId<'x> {
         mut bytes_written: usize,
     ) -> std::io::Result<usize> {
         for (pos, id) in self.id.iter().enumerate() {
-            output.write_all(b"<")?;
-            output.write_all(id.as_bytes())?;
-            output.write_all(b">")?;
-            bytes_written += id.len() + 2;
-            if pos < self.id.len() - 1 {
-                if bytes_written >= 76 {
+            if pos > 0 {
+                if bytes_written + id.len() + 2 >= 76 {
                     output.write_all(b"\r\n\t")?;
                     bytes_written = 1;
                 } else {
@@ -89,10 +85,17 @@ impl<'x> Header for MessageId<'x> {
                     bytes_written += 1;
                 }
             }
+
+            output.write_all(b"<")?;
+            output.write_all(id.as_bytes())?;
+            output.write_all(b">")?;
+            bytes_written += id.len() + 2;
         }
+
         if bytes_written > 0 {
             output.write_all(b"\r\n")?;
         }
+
         Ok(0)
     }
 }

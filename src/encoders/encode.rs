@@ -19,19 +19,21 @@ pub enum EncodingType {
     None,
 }
 
-pub fn get_encoding_type(input: &[u8], is_inline: bool) -> EncodingType {
+pub fn get_encoding_type(input: &[u8], is_inline: bool, is_body: bool) -> EncodingType {
     let base64_len = (input.len() * 4 / 3 + 3) & !3;
     let mut qp_len = if !is_inline { input.len() / 76 } else { 0 };
     let mut is_ascii = true;
     let mut needs_encoding = false;
     let mut line_len = 0;
+    let mut prev_ch = 0;
 
     for (pos, &ch) in input.iter().enumerate() {
         line_len += 1;
 
         if ch >= 127
             || ((ch == b' ' || ch == b'\t')
-                && (matches!(input.get(pos + 1..), Some([b'\n', ..] | [b'\r', b'\n', ..]))
+                && ((is_body
+                    && matches!(input.get(pos + 1..), Some([b'\n', ..] | [b'\r', b'\n', ..])))
                     || pos == input.len() - 1))
         {
             qp_len += 3;
@@ -41,17 +43,32 @@ pub fn get_encoding_type(input: &[u8], is_inline: bool) -> EncodingType {
             if is_ascii && ch >= 127 {
                 is_ascii = false;
             }
-        } else if ch == b'=' || (is_inline && (ch == b'\t' || ch == b'?')) {
+        } else if ch == b'='
+            || (!is_body && ch == b'\r')
+            || (is_inline && (ch == b'\t' || ch == b'\r' || ch == b'\n' || ch == b'?'))
+        {
             qp_len += 3;
-        } else {
-            if ch == b'\n' {
-                if !needs_encoding && line_len > 997 {
+        } else if ch == b'\n' {
+            if !needs_encoding && line_len > 997 {
+                needs_encoding = true;
+            }
+            if is_body {
+                if prev_ch != b'\r' {
+                    qp_len += 1;
+                }
+                qp_len += 1;
+            } else {
+                if !needs_encoding && prev_ch != b'\r' {
                     needs_encoding = true;
                 }
-                line_len = 0;
+                qp_len += 3;
             }
+            line_len = 0;
+        } else {
             qp_len += 1;
         }
+
+        prev_ch = ch;
     }
 
     if !needs_encoding {
@@ -64,7 +81,7 @@ pub fn get_encoding_type(input: &[u8], is_inline: bool) -> EncodingType {
 }
 
 pub fn rfc2047_encode(input: &str, mut output: impl Write) -> io::Result<usize> {
-    Ok(match get_encoding_type(input.as_bytes(), true) {
+    Ok(match get_encoding_type(input.as_bytes(), true, false) {
         EncodingType::Base64 => {
             output.write_all(b"\"=?utf-8?B?")?;
             let bytes_written = base64_encode(input.as_bytes(), &mut output, true)? + 14;
@@ -77,8 +94,9 @@ pub fn rfc2047_encode(input: &str, mut output: impl Write) -> io::Result<usize> 
             } else {
                 output.write_all(b"\"=?us-ascii?Q?")?;
             }
-            let bytes_written = quoted_printable_encode(input.as_bytes(), &mut output, true)?
-                + if is_ascii { 19 } else { 14 };
+            let bytes_written =
+                quoted_printable_encode(input.as_bytes(), &mut output, true, false)?
+                    + if is_ascii { 19 } else { 14 };
             output.write_all(b"?=\"")?;
             bytes_written
         }
@@ -89,6 +107,8 @@ pub fn rfc2047_encode(input: &str, mut output: impl Write) -> io::Result<usize> 
                 if ch == b'\\' || ch == b'"' {
                     output.write_all(b"\\")?;
                     bytes_written += 1;
+                } else if ch == b'\r' || ch == b'\n' {
+                    continue;
                 }
                 output.write_all(&[ch])?;
                 bytes_written += 1;

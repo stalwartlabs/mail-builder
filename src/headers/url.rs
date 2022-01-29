@@ -76,12 +76,8 @@ impl<'x> Header for URL<'x> {
         mut bytes_written: usize,
     ) -> std::io::Result<usize> {
         for (pos, url) in self.url.iter().enumerate() {
-            output.write_all(b"<")?;
-            output.write_all(url.as_bytes())?;
-            output.write_all(b">")?;
-            bytes_written += url.len() + 2;
-            if pos < self.url.len() - 1 {
-                if bytes_written >= 76 {
+            if pos > 0 {
+                if bytes_written + url.len() + 2 >= 76 {
                     output.write_all(b"\r\n\t")?;
                     bytes_written = 1;
                 } else {
@@ -89,10 +85,16 @@ impl<'x> Header for URL<'x> {
                     bytes_written += 1;
                 }
             }
+            output.write_all(b"<")?;
+            output.write_all(url.as_bytes())?;
+            output.write_all(b">")?;
+            bytes_written += url.len() + 2;
         }
+
         if bytes_written > 0 {
             output.write_all(b"\r\n")?;
         }
+
         Ok(0)
     }
 }

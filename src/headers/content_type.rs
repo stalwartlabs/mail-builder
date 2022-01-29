@@ -44,6 +44,11 @@ impl<'x> ContentType<'x> {
     pub fn is_text(&self) -> bool {
         self.c_type.starts_with("text/")
     }
+
+    /// Returns true when the part is an attachment
+    pub fn is_attachment(&self) -> bool {
+        self.c_type == "attachment"
+    }
 }
 
 impl<'x> Header for ContentType<'x> {

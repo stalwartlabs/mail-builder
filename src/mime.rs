@@ -232,20 +232,36 @@ impl<'x> MimePart<'x> {
                 }
                 match part.contents {
                     BodyPart::Text(text) => {
+                        let mut is_attachment = false;
                         for (header_name, header_value) in &part.headers {
                             output.write_all(header_name.as_bytes())?;
                             output.write_all(b": ")?;
+                            if !is_attachment && header_name == "Content-Disposition" {
+                                is_attachment = header_value
+                                    .as_content_type()
+                                    .map(|v| v.is_attachment())
+                                    .unwrap_or(false);
+                            }
                             header_value.write_header(&mut output, header_name.len() + 2)?;
                         }
-                        detect_encoding(text.as_bytes(), &mut output)?;
+                        detect_encoding(text.as_bytes(), &mut output, !is_attachment)?;
                     }
                     BodyPart::Binary(binary) => {
                         let mut is_text = false;
+                        let mut is_attachment = false;
                         for (header_name, header_value) in &part.headers {
                             output.write_all(header_name.as_bytes())?;
                             output.write_all(b": ")?;
                             if !is_text && header_name == "Content-Type" {
-                                is_text = header_value.as_content_type().unwrap().is_text();
+                                is_text = header_value
+                                    .as_content_type()
+                                    .map(|v| v.is_text())
+                                    .unwrap_or(false);
+                            } else if !is_attachment && header_name == "Content-Disposition" {
+                                is_attachment = header_value
+                                    .as_content_type()
+                                    .map(|v| v.is_attachment())
+                                    .unwrap_or(false);
                             }
                             header_value.write_header(&mut output, header_name.len() + 2)?;
                         }
@@ -253,7 +269,7 @@ impl<'x> MimePart<'x> {
                             output.write_all(b"Content-Transfer-Encoding: base64\r\n\r\n")?;
                             base64_encode(binary.as_ref(), &mut output, false)?;
                         } else {
-                            detect_encoding(binary.as_ref(), &mut output)?;
+                            detect_encoding(binary.as_ref(), &mut output, !is_attachment)?;
                         }
                     }
                     BodyPart::Multipart(parts) => {
@@ -301,19 +317,30 @@ impl<'x> MimePart<'x> {
     }
 }
 
-fn detect_encoding(input: &[u8], mut output: impl Write) -> io::Result<()> {
-    match get_encoding_type(input, false) {
+fn detect_encoding(input: &[u8], mut output: impl Write, is_body: bool) -> io::Result<()> {
+    match get_encoding_type(input, false, is_body) {
         EncodingType::Base64 => {
             output.write_all(b"Content-Transfer-Encoding: base64\r\n\r\n")?;
             base64_encode(input, &mut output, false)?;
         }
         EncodingType::QuotedPrintable(_) => {
             output.write_all(b"Content-Transfer-Encoding: quoted-printable\r\n\r\n")?;
-            quoted_printable_encode(input, &mut output, false)?;
+            quoted_printable_encode(input, &mut output, false, is_body)?;
         }
         EncodingType::None => {
             output.write_all(b"Content-Transfer-Encoding: 7bit\r\n\r\n")?;
-            output.write_all(input)?;
+            if is_body {
+                let mut prev_ch = 0;
+                for ch in input {
+                    if *ch == b'\n' && prev_ch != b'\r' {
+                        output.write_all(b"\r")?;
+                    }
+                    output.write_all(&[*ch])?;
+                    prev_ch = *ch;
+                }
+            } else {
+                output.write_all(input)?;
+            }
         }
     }
     Ok(())

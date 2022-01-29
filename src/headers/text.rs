@@ -46,7 +46,7 @@ impl<'x> Header for Text<'x> {
         mut output: impl std::io::Write,
         mut bytes_written: usize,
     ) -> std::io::Result<usize> {
-        match get_encoding_type(self.text.as_bytes(), true) {
+        match get_encoding_type(self.text.as_bytes(), true, false) {
             EncodingType::Base64 => {
                 for (pos, chunk) in self.text.as_bytes().chunks(76 - bytes_written).enumerate() {
                     if pos > 0 {
@@ -67,7 +67,7 @@ impl<'x> Header for Text<'x> {
                     } else {
                         output.write_all(b"=?us-ascii?Q?")?;
                     }
-                    quoted_printable_encode(chunk, &mut output, true)?;
+                    quoted_printable_encode(chunk, &mut output, true, false)?;
                     output.write_all(b"?=\r\n")?;
                 }
             }

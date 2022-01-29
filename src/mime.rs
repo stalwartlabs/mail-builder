@@ -11,10 +11,7 @@
 
 use std::{
     borrow::Cow,
-    collections::{
-        hash_map::{DefaultHasher, Entry},
-        HashMap,
-    },
+    collections::{btree_map::Entry, hash_map::DefaultHasher, BTreeMap},
     hash::{Hash, Hasher},
     io::{self, Write},
     iter::FromIterator,
@@ -37,7 +34,7 @@ use crate::{
 
 /// MIME part of an e-mail.
 pub struct MimePart<'x> {
-    pub headers: HashMap<Cow<'x, str>, HeaderType<'x>>,
+    pub headers: BTreeMap<Cow<'x, str>, HeaderType<'x>>,
     pub contents: BodyPart<'x>,
 }
 
@@ -91,7 +88,7 @@ impl<'x> MimePart<'x> {
     pub fn new(content_type: ContentType<'x>, contents: BodyPart<'x>) -> Self {
         Self {
             contents,
-            headers: HashMap::from_iter(vec![("Content-Type".into(), content_type.into())]),
+            headers: BTreeMap::from_iter(vec![("Content-Type".into(), content_type.into())]),
         }
     }
 
@@ -102,7 +99,7 @@ impl<'x> MimePart<'x> {
     ) -> Self {
         Self {
             contents: BodyPart::Multipart(contents),
-            headers: HashMap::from_iter(vec![(
+            headers: BTreeMap::from_iter(vec![(
                 "Content-Type".into(),
                 ContentType::new(content_type).into(),
             )]),
@@ -113,7 +110,7 @@ impl<'x> MimePart<'x> {
     pub fn new_text(contents: impl Into<Cow<'x, str>>) -> Self {
         Self {
             contents: BodyPart::Text(contents.into()),
-            headers: HashMap::from_iter(vec![(
+            headers: BTreeMap::from_iter(vec![(
                 "Content-Type".into(),
                 ContentType::new("text/plain")
                     .attribute("charset", "utf-8")
@@ -129,7 +126,7 @@ impl<'x> MimePart<'x> {
     ) -> Self {
         Self {
             contents: BodyPart::Text(contents.into()),
-            headers: HashMap::from_iter(vec![(
+            headers: BTreeMap::from_iter(vec![(
                 "Content-Type".into(),
                 ContentType::new(content_type)
                     .attribute("charset", "utf-8")
@@ -142,7 +139,7 @@ impl<'x> MimePart<'x> {
     pub fn new_html(contents: impl Into<Cow<'x, str>>) -> Self {
         Self {
             contents: BodyPart::Text(contents.into()),
-            headers: HashMap::from_iter(vec![(
+            headers: BTreeMap::from_iter(vec![(
                 "Content-Type".into(),
                 ContentType::new("text/html")
                     .attribute("charset", "utf-8")
@@ -155,7 +152,7 @@ impl<'x> MimePart<'x> {
     pub fn new_binary(c_type: impl Into<Cow<'x, str>>, contents: impl Into<Cow<'x, [u8]>>) -> Self {
         Self {
             contents: BodyPart::Binary(contents.into()),
-            headers: HashMap::from_iter(vec![(
+            headers: BTreeMap::from_iter(vec![(
                 "Content-Type".into(),
                 ContentType::new(c_type).into(),
             )]),

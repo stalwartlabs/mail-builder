@@ -207,14 +207,14 @@
 //!
 //! [COPYING]: https://github.com/stalwartlabs/mail-builder/blob/main/COPYING
 //!
-
+#[forbid(unsafe_code)]
 pub mod encoders;
 pub mod headers;
 pub mod mime;
 
 use std::{
     borrow::Cow,
-    collections::HashMap,
+    collections::BTreeMap,
     io::{self, Write},
 };
 
@@ -226,7 +226,7 @@ use mime::{make_boundary, MimePart};
 
 /// Builds a RFC5322 compliant MIME email message.
 pub struct MessageBuilder<'x> {
-    pub headers: HashMap<Cow<'x, str>, Vec<HeaderType<'x>>>,
+    pub headers: BTreeMap<Cow<'x, str>, Vec<HeaderType<'x>>>,
     pub html_body: Option<MimePart<'x>>,
     pub text_body: Option<MimePart<'x>>,
     pub attachments: Option<Vec<MimePart<'x>>>,
@@ -243,7 +243,7 @@ impl<'x> MessageBuilder<'x> {
     /// Create a new MessageBuilder.
     pub fn new() -> Self {
         MessageBuilder {
-            headers: HashMap::new(),
+            headers: BTreeMap::new(),
             html_body: None,
             text_body: None,
             attachments: None,

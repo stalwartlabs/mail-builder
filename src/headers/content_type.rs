@@ -9,7 +9,7 @@
  * except according to those terms.
  */
 
-use std::{borrow::Cow, collections::HashMap};
+use std::{borrow::Cow, collections::BTreeMap};
 
 use crate::encoders::encode::rfc2047_encode;
 
@@ -18,7 +18,7 @@ use super::Header;
 /// MIME Content-Type or Content-Disposition header
 pub struct ContentType<'x> {
     pub c_type: Cow<'x, str>,
-    pub attributes: HashMap<Cow<'x, str>, Cow<'x, str>>,
+    pub attributes: BTreeMap<Cow<'x, str>, Cow<'x, str>>,
 }
 
 impl<'x> ContentType<'x> {
@@ -26,7 +26,7 @@ impl<'x> ContentType<'x> {
     pub fn new(c_type: impl Into<Cow<'x, str>>) -> Self {
         Self {
             c_type: c_type.into(),
-            attributes: HashMap::new(),
+            attributes: BTreeMap::new(),
         }
     }
 

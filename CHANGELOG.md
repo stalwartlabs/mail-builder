@@ -1,3 +1,11 @@
+mail-builder 0.1.3
+================================
+- Bug fixes.
+- Headers are written sorted alplhabetically.
+- Improved ID boundary generation.
+- Encoding type detection for `[u8]` text parts.
+- Optimised quoted-printable encoding.
+
 mail-builder 0.1.2
 ================================
 - All functions now take `impl Cow<str>`.

@@ -224,7 +224,7 @@ impl<'x> MimePart<'x> {
         let mut boundary: Option<Cow<str>> = None;
 
         loop {
-            while let Some(part) = it.next() {
+            while let Some(mut part) = it.next() {
                 if let Some(boundary) = boundary.as_ref() {
                     output.write_all(b"\r\n--")?;
                     output.write_all(boundary.as_bytes())?;
@@ -277,21 +277,45 @@ impl<'x> MimePart<'x> {
                             stack.push((it, boundary));
                         }
 
-                        boundary = Some(make_boundary().into());
-
-                        for (header_name, mut header_value) in part.headers {
-                            match &mut header_value {
-                                HeaderType::ContentType(ref mut content_type)
-                                    if header_name == "Content-Type" =>
-                                {
+                        output.write_all(b"Content-Type: ")?;
+                        boundary = if let Some(value) = part.headers.remove("Content-Type") {
+                            match value {
+                                HeaderType::ContentType(mut ct) => {
                                     if let Entry::Vacant(entry) =
-                                        content_type.attributes.entry("boundary".into())
+                                        ct.attributes.entry("boundary".into())
                                     {
-                                        entry.insert(boundary.as_ref().unwrap().as_ref().into());
+                                        entry.insert(make_boundary().into());
+                                    }
+                                    ct.write_header(&mut output, 14)?;
+                                    ct.attributes.remove("boundary")
+                                }
+                                HeaderType::Raw(raw) => {
+                                    if let Some(pos) = raw.raw.find("boundary=\"") {
+                                        if let Some(boundary) = raw.raw[pos..].split('"').nth(1) {
+                                            Some(boundary.to_string().into())
+                                        } else {
+                                            Some(make_boundary().into())
+                                        }
+                                    } else {
+                                        let boundary = make_boundary();
+                                        output.write_all(raw.raw.as_bytes())?;
+                                        output.write_all(b"; boundary=\"")?;
+                                        output.write_all(boundary.as_bytes())?;
+                                        output.write_all(b"\"\r\n")?;
+                                        Some(boundary.into())
                                     }
                                 }
-                                _ => {}
+                                _ => panic!("Unsupported Content-Type header value."),
                             }
+                        } else {
+                            let boundary = make_boundary();
+                            ContentType::new("multipart/mixed")
+                                .attribute("boundary", &boundary)
+                                .write_header(&mut output, 14)?;
+                            Some(boundary.into())
+                        };
+
+                        for (header_name, header_value) in part.headers {
                             output.write_all(header_name.as_bytes())?;
                             output.write_all(b": ")?;
                             header_value.write_header(&mut output, header_name.len() + 2)?;

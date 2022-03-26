@@ -11,6 +11,7 @@
 
 use std::{
     borrow::Cow,
+    cell::Cell,
     collections::{btree_map::Entry, hash_map::DefaultHasher, BTreeMap},
     hash::{Hash, Hasher},
     io::{self, Write},
@@ -18,8 +19,6 @@ use std::{
     thread,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
-
-use rand::Rng;
 
 use crate::{
     encoders::{
@@ -68,18 +67,25 @@ impl<'x> From<Vec<u8>> for BodyPart<'x> {
     }
 }
 
+thread_local!(static COUNTER: Cell<u64> = Cell::new(0));
+
 pub fn make_boundary() -> String {
     let mut s = DefaultHasher::new();
     gethostname::gethostname().hash(&mut s);
     thread::current().id().hash(&mut s);
+    let hash = s.finish();
+
     format!(
         "{:x}_{:x}_{:x}",
         SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap_or_else(|_| Duration::new(0, 0))
             .as_nanos(),
-        rand::thread_rng().gen::<u64>(),
-        s.finish()
+        COUNTER.with(|c| {
+            hash.wrapping_add(c.replace(c.get() + 1))
+                .wrapping_mul(11400714819323198485u64)
+        }),
+        hash,
     )
 }
 

@@ -14,7 +14,6 @@ readme = "README.md"
 [dependencies]
 gethostname = "0.2.2"
 chrono = "0.4"
-rand = "0.8.4"
 
 [dev-dependencies]
 mail-parser = "0.4.3"

@@ -1,5 +1,5 @@
 /*
- * Copyright Stalwart Labs, Minter Ltd. See the COPYING
+ * Copyright Stalwart Labs Ltd. See the COPYING
  * file at the top-level directory of this distribution.
  *
  * Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
@@ -201,7 +201,7 @@
 //!
 //! ## Copyright
 //!
-//! Copyright (C) 2020-2022, Stalwart Labs, Minter Ltd.
+//! Copyright (C) 2020-2022, Stalwart Labs Ltd.
 //!
 //! See [COPYING] for the license.
 //!

@@ -182,7 +182,7 @@ at your option.
 
 ## Copyright
 
-Copyright (C) 2020-2022, Stalwart Labs, Minter Ltd.
+Copyright (C) 2020-2022, Stalwart Labs Ltd.
 
 See [COPYING] for the license.
 

@@ -9,21 +9,21 @@
  * except according to those terms.
  */
 
-use std::{borrow::Cow, collections::BTreeMap};
+use std::collections::BTreeMap;
 
 use crate::encoders::encode::rfc2047_encode;
 
 use super::Header;
 
 /// MIME Content-Type or Content-Disposition header
-pub struct ContentType<'x> {
-    pub c_type: Cow<'x, str>,
-    pub attributes: BTreeMap<Cow<'x, str>, Cow<'x, str>>,
+pub struct ContentType {
+    pub c_type: String,
+    pub attributes: BTreeMap<String, String>,
 }
 
-impl<'x> ContentType<'x> {
+impl ContentType {
     /// Create a new Content-Type or Content-Disposition header
-    pub fn new(c_type: impl Into<Cow<'x, str>>) -> Self {
+    pub fn new(c_type: impl Into<String>) -> Self {
         Self {
             c_type: c_type.into(),
             attributes: BTreeMap::new(),
@@ -31,11 +31,7 @@ impl<'x> ContentType<'x> {
     }
 
     /// Set a Content-Type / Content-Disposition attribute
-    pub fn attribute(
-        mut self,
-        key: impl Into<Cow<'x, str>>,
-        value: impl Into<Cow<'x, str>>,
-    ) -> Self {
+    pub fn attribute(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
         self.attributes.insert(key.into(), value.into());
         self
     }
@@ -51,7 +47,7 @@ impl<'x> ContentType<'x> {
     }
 }
 
-impl<'x> Header for ContentType<'x> {
+impl Header for ContentType {
     fn write_header(
         &self,
         mut output: impl std::io::Write,

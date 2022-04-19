@@ -10,7 +10,6 @@
  */
 
 use std::{
-    borrow::Cow,
     cell::Cell,
     collections::{btree_map::Entry, hash_map::DefaultHasher, BTreeMap},
     hash::{Hash, Hasher},
@@ -32,38 +31,38 @@ use crate::{
 };
 
 /// MIME part of an e-mail.
-pub struct MimePart<'x> {
-    pub headers: BTreeMap<Cow<'x, str>, HeaderType<'x>>,
-    pub contents: BodyPart<'x>,
+pub struct MimePart {
+    pub headers: BTreeMap<String, HeaderType>,
+    pub contents: BodyPart,
 }
 
-pub enum BodyPart<'x> {
-    Text(Cow<'x, str>),
-    Binary(Cow<'x, [u8]>),
-    Multipart(Vec<MimePart<'x>>),
+pub enum BodyPart {
+    Text(String),
+    Binary(Vec<u8>),
+    Multipart(Vec<MimePart>),
 }
 
-impl<'x> From<&'x str> for BodyPart<'x> {
+impl<'x> From<&'x str> for BodyPart {
     fn from(value: &'x str) -> Self {
         BodyPart::Text(value.into())
     }
 }
 
-impl<'x> From<&'x [u8]> for BodyPart<'x> {
+impl<'x> From<&'x [u8]> for BodyPart {
     fn from(value: &'x [u8]) -> Self {
         BodyPart::Binary(value.into())
     }
 }
 
-impl<'x> From<String> for BodyPart<'x> {
+impl From<String> for BodyPart {
     fn from(value: String) -> Self {
-        BodyPart::Text(value.into())
+        BodyPart::Text(value)
     }
 }
 
-impl<'x> From<Vec<u8>> for BodyPart<'x> {
+impl From<Vec<u8>> for BodyPart {
     fn from(value: Vec<u8>) -> Self {
-        BodyPart::Binary(value.into())
+        BodyPart::Binary(value)
     }
 }
 
@@ -89,9 +88,9 @@ pub fn make_boundary() -> String {
     )
 }
 
-impl<'x> MimePart<'x> {
+impl MimePart {
     /// Create a custom MIME part.
-    pub fn new(content_type: ContentType<'x>, contents: BodyPart<'x>) -> Self {
+    pub fn new(content_type: ContentType, contents: BodyPart) -> Self {
         Self {
             contents,
             headers: BTreeMap::from_iter(vec![("Content-Type".into(), content_type.into())]),
@@ -99,10 +98,7 @@ impl<'x> MimePart<'x> {
     }
 
     /// Create a new multipart/* MIME part.
-    pub fn new_multipart(
-        content_type: impl Into<Cow<'x, str>>,
-        contents: Vec<MimePart<'x>>,
-    ) -> Self {
+    pub fn new_multipart(content_type: impl Into<String>, contents: Vec<MimePart>) -> Self {
         Self {
             contents: BodyPart::Multipart(contents),
             headers: BTreeMap::from_iter(vec![(
@@ -113,7 +109,7 @@ impl<'x> MimePart<'x> {
     }
 
     /// Create a new text/plain MIME part.
-    pub fn new_text(contents: impl Into<Cow<'x, str>>) -> Self {
+    pub fn new_text(contents: impl Into<String>) -> Self {
         Self {
             contents: BodyPart::Text(contents.into()),
             headers: BTreeMap::from_iter(vec![(
@@ -126,10 +122,7 @@ impl<'x> MimePart<'x> {
     }
 
     /// Create a new text/* MIME part.
-    pub fn new_text_other(
-        content_type: impl Into<Cow<'x, str>>,
-        contents: impl Into<Cow<'x, str>>,
-    ) -> Self {
+    pub fn new_text_other(content_type: impl Into<String>, contents: impl Into<String>) -> Self {
         Self {
             contents: BodyPart::Text(contents.into()),
             headers: BTreeMap::from_iter(vec![(
@@ -142,7 +135,7 @@ impl<'x> MimePart<'x> {
     }
 
     /// Create a new text/html MIME part.
-    pub fn new_html(contents: impl Into<Cow<'x, str>>) -> Self {
+    pub fn new_html(contents: impl Into<String>) -> Self {
         Self {
             contents: BodyPart::Text(contents.into()),
             headers: BTreeMap::from_iter(vec![(
@@ -155,7 +148,7 @@ impl<'x> MimePart<'x> {
     }
 
     /// Create a new binary MIME part.
-    pub fn new_binary(c_type: impl Into<Cow<'x, str>>, contents: impl Into<Cow<'x, [u8]>>) -> Self {
+    pub fn new_binary(c_type: impl Into<String>, contents: impl Into<Vec<u8>>) -> Self {
         Self {
             contents: BodyPart::Binary(contents.into()),
             headers: BTreeMap::from_iter(vec![(
@@ -166,7 +159,7 @@ impl<'x> MimePart<'x> {
     }
 
     /// Set the attachment filename of a MIME part.
-    pub fn attachment(mut self, filename: impl Into<Cow<'x, str>>) -> Self {
+    pub fn attachment(mut self, filename: impl Into<String>) -> Self {
         self.headers.insert(
             "Content-Disposition".into(),
             ContentType::new("attachment")
@@ -186,38 +179,34 @@ impl<'x> MimePart<'x> {
     }
 
     /// Set the Content-Language header of a MIME part.
-    pub fn language(mut self, value: impl Into<Cow<'x, str>>) -> Self {
+    pub fn language(mut self, value: impl Into<String>) -> Self {
         self.headers
             .insert("Content-Language".into(), Text::new(value).into());
         self
     }
 
     /// Set the Content-ID header of a MIME part.
-    pub fn cid(mut self, value: impl Into<Cow<'x, str>>) -> Self {
+    pub fn cid(mut self, value: impl Into<String>) -> Self {
         self.headers
             .insert("Content-ID".into(), MessageId::new(value).into());
         self
     }
 
     /// Set the Content-Location header of a MIME part.
-    pub fn location(mut self, value: impl Into<Cow<'x, str>>) -> Self {
+    pub fn location(mut self, value: impl Into<String>) -> Self {
         self.headers
             .insert("Content-Location".into(), Raw::new(value).into());
         self
     }
 
     /// Set custom headers of a MIME part.
-    pub fn header(
-        mut self,
-        header: impl Into<Cow<'x, str>>,
-        value: impl Into<HeaderType<'x>>,
-    ) -> Self {
+    pub fn header(mut self, header: impl Into<String>, value: impl Into<HeaderType>) -> Self {
         self.headers.insert(header.into(), value.into());
         self
     }
 
     /// Add a body part to a multipart/* MIME part.
-    pub fn add_part(&mut self, part: MimePart<'x>) {
+    pub fn add_part(&mut self, part: MimePart) {
         if let BodyPart::Multipart(ref mut parts) = self.contents {
             parts.push(part);
         }
@@ -227,7 +216,7 @@ impl<'x> MimePart<'x> {
     pub fn write_part(self, mut output: impl Write) -> io::Result<usize> {
         let mut stack = Vec::new();
         let mut it = vec![self].into_iter();
-        let mut boundary: Option<Cow<str>> = None;
+        let mut boundary: Option<String> = None;
 
         loop {
             while let Some(mut part) = it.next() {
@@ -290,7 +279,7 @@ impl<'x> MimePart<'x> {
                                     if let Entry::Vacant(entry) =
                                         ct.attributes.entry("boundary".into())
                                     {
-                                        entry.insert(make_boundary().into());
+                                        entry.insert(make_boundary());
                                     }
                                     ct.write_header(&mut output, 14)?;
                                     ct.attributes.remove("boundary")
@@ -298,9 +287,9 @@ impl<'x> MimePart<'x> {
                                 HeaderType::Raw(raw) => {
                                     if let Some(pos) = raw.raw.find("boundary=\"") {
                                         if let Some(boundary) = raw.raw[pos..].split('"').nth(1) {
-                                            Some(boundary.to_string().into())
+                                            Some(boundary.to_string())
                                         } else {
-                                            Some(make_boundary().into())
+                                            Some(make_boundary())
                                         }
                                     } else {
                                         let boundary = make_boundary();
@@ -308,7 +297,7 @@ impl<'x> MimePart<'x> {
                                         output.write_all(b"; boundary=\"")?;
                                         output.write_all(boundary.as_bytes())?;
                                         output.write_all(b"\"\r\n")?;
-                                        Some(boundary.into())
+                                        Some(boundary)
                                     }
                                 }
                                 _ => panic!("Unsupported Content-Type header value."),
@@ -318,7 +307,7 @@ impl<'x> MimePart<'x> {
                             ContentType::new("multipart/mixed")
                                 .attribute("boundary", &boundary)
                                 .write_header(&mut output, 14)?;
-                            Some(boundary.into())
+                            Some(boundary)
                         };
 
                         for (header_name, header_value) in part.headers {

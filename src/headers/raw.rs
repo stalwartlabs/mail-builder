@@ -9,33 +9,31 @@
  * except according to those terms.
  */
 
-use std::borrow::Cow;
-
 use super::Header;
 
 /// Raw e-mail header.
 /// Raw headers are not encoded, only line-wrapped.
-pub struct Raw<'x> {
-    pub raw: Cow<'x, str>,
+pub struct Raw {
+    pub raw: String,
 }
 
-impl<'x> Raw<'x> {
+impl Raw {
     /// Create a new raw header
-    pub fn new(raw: impl Into<Cow<'x, str>>) -> Self {
+    pub fn new(raw: impl Into<String>) -> Self {
         Self { raw: raw.into() }
     }
 }
 
-impl<'x, T> From<T> for Raw<'x>
+impl<'x, T> From<T> for Raw
 where
-    T: Into<Cow<'x, str>>,
+    T: Into<String>,
 {
     fn from(value: T) -> Self {
         Self::new(value)
     }
 }
 
-impl<'x> Header for Raw<'x> {
+impl Header for Raw {
     fn write_header(
         &self,
         mut output: impl std::io::Write,

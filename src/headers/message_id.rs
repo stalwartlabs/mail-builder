@@ -9,18 +9,16 @@
  * except according to those terms.
  */
 
-use std::borrow::Cow;
-
 use super::Header;
 
 /// RFC5322 Message ID header
-pub struct MessageId<'x> {
-    pub id: Vec<Cow<'x, str>>,
+pub struct MessageId {
+    pub id: Vec<String>,
 }
 
-impl<'x> MessageId<'x> {
+impl MessageId {
     /// Create a new Message ID header
-    pub fn new(id: impl Into<Cow<'x, str>>) -> Self {
+    pub fn new(id: impl Into<String>) -> Self {
         Self {
             id: vec![id.into()],
         }
@@ -30,7 +28,7 @@ impl<'x> MessageId<'x> {
     pub fn new_list<T, U>(ids: T) -> Self
     where
         T: Iterator<Item = U>,
-        U: Into<Cow<'x, str>>,
+        U: Into<String>,
     {
         Self {
             id: ids.map(|s| s.into()).collect(),
@@ -38,19 +36,19 @@ impl<'x> MessageId<'x> {
     }
 }
 
-impl<'x> From<&'x str> for MessageId<'x> {
+impl<'x> From<&'x str> for MessageId {
     fn from(value: &'x str) -> Self {
         Self::new(value)
     }
 }
 
-impl<'x> From<String> for MessageId<'x> {
+impl From<String> for MessageId {
     fn from(value: String) -> Self {
         Self::new(value)
     }
 }
 
-impl<'x> From<&[&'x str]> for MessageId<'x> {
+impl<'x> From<&[&'x str]> for MessageId {
     fn from(value: &[&'x str]) -> Self {
         MessageId {
             id: value.iter().map(|&s| s.into()).collect(),
@@ -58,9 +56,9 @@ impl<'x> From<&[&'x str]> for MessageId<'x> {
     }
 }
 
-impl<'x, T> From<Vec<T>> for MessageId<'x>
+impl<'x, T> From<Vec<T>> for MessageId
 where
-    T: Into<Cow<'x, str>>,
+    T: Into<String>,
 {
     fn from(value: Vec<T>) -> Self {
         MessageId {
@@ -69,7 +67,7 @@ where
     }
 }
 
-impl<'x> Header for MessageId<'x> {
+impl Header for MessageId {
     fn write_header(
         &self,
         mut output: impl std::io::Write,

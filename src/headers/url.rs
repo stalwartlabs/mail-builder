@@ -9,18 +9,16 @@
  * except according to those terms.
  */
 
-use std::borrow::Cow;
-
 use super::Header;
 
 /// URL header, used mostly on List-* headers
-pub struct URL<'x> {
-    pub url: Vec<Cow<'x, str>>,
+pub struct URL {
+    pub url: Vec<String>,
 }
 
-impl<'x> URL<'x> {
+impl URL {
     /// Create a new URL header
-    pub fn new(url: impl Into<Cow<'x, str>>) -> Self {
+    pub fn new(url: impl Into<String>) -> Self {
         Self {
             url: vec![url.into()],
         }
@@ -30,7 +28,7 @@ impl<'x> URL<'x> {
     pub fn new_list<T, U>(urls: T) -> Self
     where
         T: Iterator<Item = U>,
-        U: Into<Cow<'x, str>>,
+        U: Into<String>,
     {
         Self {
             url: urls.map(|s| s.into()).collect(),
@@ -38,19 +36,19 @@ impl<'x> URL<'x> {
     }
 }
 
-impl<'x> From<&'x str> for URL<'x> {
+impl<'x> From<&'x str> for URL {
     fn from(value: &'x str) -> Self {
         Self::new(value)
     }
 }
 
-impl<'x> From<String> for URL<'x> {
+impl From<String> for URL {
     fn from(value: String) -> Self {
         Self::new(value)
     }
 }
 
-impl<'x> From<&[&'x str]> for URL<'x> {
+impl<'x> From<&[&'x str]> for URL {
     fn from(value: &[&'x str]) -> Self {
         URL {
             url: value.iter().map(|&s| s.into()).collect(),
@@ -58,9 +56,9 @@ impl<'x> From<&[&'x str]> for URL<'x> {
     }
 }
 
-impl<'x, T> From<Vec<T>> for URL<'x>
+impl<'x, T> From<Vec<T>> for URL
 where
-    T: Into<Cow<'x, str>>,
+    T: Into<String>,
 {
     fn from(value: Vec<T>) -> Self {
         URL {
@@ -69,7 +67,7 @@ where
     }
 }
 
-impl<'x> Header for URL<'x> {
+impl Header for URL {
     fn write_header(
         &self,
         mut output: impl std::io::Write,

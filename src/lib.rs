@@ -213,7 +213,6 @@ pub mod headers;
 pub mod mime;
 
 use std::{
-    borrow::Cow,
     collections::BTreeMap,
     io::{self, Write},
 };
@@ -225,21 +224,21 @@ use headers::{
 use mime::{make_boundary, MimePart};
 
 /// Builds a RFC5322 compliant MIME email message.
-pub struct MessageBuilder<'x> {
-    pub headers: BTreeMap<Cow<'x, str>, Vec<HeaderType<'x>>>,
-    pub html_body: Option<MimePart<'x>>,
-    pub text_body: Option<MimePart<'x>>,
-    pub attachments: Option<Vec<MimePart<'x>>>,
-    pub body: Option<MimePart<'x>>,
+pub struct MessageBuilder {
+    pub headers: BTreeMap<String, Vec<HeaderType>>,
+    pub html_body: Option<MimePart>,
+    pub text_body: Option<MimePart>,
+    pub attachments: Option<Vec<MimePart>>,
+    pub body: Option<MimePart>,
 }
 
-impl<'x> Default for MessageBuilder<'x> {
+impl Default for MessageBuilder {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<'x> MessageBuilder<'x> {
+impl MessageBuilder {
     /// Create a new MessageBuilder.
     pub fn new() -> Self {
         MessageBuilder {
@@ -253,52 +252,52 @@ impl<'x> MessageBuilder<'x> {
 
     /// Set the Message-ID header. If no Message-ID header is set, one will be
     /// generated automatically.
-    pub fn message_id(&mut self, value: impl Into<MessageId<'x>>) {
+    pub fn message_id(&mut self, value: impl Into<MessageId>) {
         self.header("Message-ID", value.into());
     }
 
     /// Set the In-Reply-To header.
-    pub fn in_reply_to(&mut self, value: impl Into<MessageId<'x>>) {
+    pub fn in_reply_to(&mut self, value: impl Into<MessageId>) {
         self.header("In-Reply-To", value.into());
     }
 
     /// Set the References header.
-    pub fn references(&mut self, value: impl Into<MessageId<'x>>) {
+    pub fn references(&mut self, value: impl Into<MessageId>) {
         self.header("References", value.into());
     }
 
     /// Set the Sender header.
-    pub fn sender(&mut self, value: impl Into<Address<'x>>) {
+    pub fn sender(&mut self, value: impl Into<Address>) {
         self.header("Sender", value.into());
     }
 
     /// Set the From header.
-    pub fn from(&mut self, value: impl Into<Address<'x>>) {
+    pub fn from(&mut self, value: impl Into<Address>) {
         self.header("From", value.into());
     }
 
     /// Set the To header.
-    pub fn to(&mut self, value: impl Into<Address<'x>>) {
+    pub fn to(&mut self, value: impl Into<Address>) {
         self.header("To", value.into());
     }
 
     /// Set the Cc header.
-    pub fn cc(&mut self, value: impl Into<Address<'x>>) {
+    pub fn cc(&mut self, value: impl Into<Address>) {
         self.header("Cc", value.into());
     }
 
     /// Set the Bcc header.
-    pub fn bcc(&mut self, value: impl Into<Address<'x>>) {
+    pub fn bcc(&mut self, value: impl Into<Address>) {
         self.header("Bcc", value.into());
     }
 
     /// Set the Reply-To header.
-    pub fn reply_to(&mut self, value: impl Into<Address<'x>>) {
+    pub fn reply_to(&mut self, value: impl Into<Address>) {
         self.header("Reply-To", value.into());
     }
 
     /// Set the Subject header.
-    pub fn subject(&mut self, value: impl Into<Text<'x>>) {
+    pub fn subject(&mut self, value: impl Into<Text>) {
         self.header("Subject", value.into());
     }
 
@@ -309,7 +308,7 @@ impl<'x> MessageBuilder<'x> {
     }
 
     /// Add a custom header.
-    pub fn header(&mut self, header: impl Into<Cow<'x, str>>, value: impl Into<HeaderType<'x>>) {
+    pub fn header(&mut self, header: impl Into<String>, value: impl Into<HeaderType>) {
         self.headers
             .entry(header.into())
             .or_insert_with(Vec::new)
@@ -319,23 +318,23 @@ impl<'x> MessageBuilder<'x> {
     /// Set the plain text body of the message. Note that only one plain text body
     /// per message can be set using this function.
     /// To build more complex MIME body structures, use the `body` method instead.
-    pub fn text_body(&mut self, value: impl Into<Cow<'x, str>>) {
+    pub fn text_body(&mut self, value: impl Into<String>) {
         self.text_body = Some(MimePart::new_text(value));
     }
 
     /// Set the HTML body of the message. Note that only one HTML body
     /// per message can be set using this function.
     /// To build more complex MIME body structures, use the `body` method instead.
-    pub fn html_body(&mut self, value: impl Into<Cow<'x, str>>) {
+    pub fn html_body(&mut self, value: impl Into<String>) {
         self.html_body = Some(MimePart::new_html(value));
     }
 
     /// Add a binary attachment to the message.
     pub fn binary_attachment(
         &mut self,
-        content_type: impl Into<Cow<'x, str>>,
-        filename: impl Into<Cow<'x, str>>,
-        value: impl Into<Cow<'x, [u8]>>,
+        content_type: impl Into<String>,
+        filename: impl Into<String>,
+        value: impl Into<Vec<u8>>,
     ) {
         self.attachments
             .get_or_insert_with(Vec::new)
@@ -345,9 +344,9 @@ impl<'x> MessageBuilder<'x> {
     /// Add a text attachment to the message.
     pub fn text_attachment(
         &mut self,
-        content_type: impl Into<Cow<'x, str>>,
-        filename: impl Into<Cow<'x, str>>,
-        value: impl Into<Cow<'x, str>>,
+        content_type: impl Into<String>,
+        filename: impl Into<String>,
+        value: impl Into<String>,
     ) {
         self.attachments
             .get_or_insert_with(Vec::new)
@@ -357,9 +356,9 @@ impl<'x> MessageBuilder<'x> {
     /// Add an inline binary to the message.
     pub fn binary_inline(
         &mut self,
-        content_type: impl Into<Cow<'x, str>>,
-        cid: impl Into<Cow<'x, str>>,
-        value: impl Into<Cow<'x, [u8]>>,
+        content_type: impl Into<String>,
+        cid: impl Into<String>,
+        value: impl Into<Vec<u8>>,
     ) {
         self.attachments
             .get_or_insert_with(Vec::new)
@@ -367,7 +366,7 @@ impl<'x> MessageBuilder<'x> {
     }
 
     /// Set a custom MIME body structure.
-    pub fn body(&mut self, value: MimePart<'x>) {
+    pub fn body(&mut self, value: MimePart) {
         self.body = Some(value);
     }
 

@@ -9,6 +9,8 @@
  * except according to those terms.
  */
 
+use std::borrow::Cow;
+
 use crate::encoders::{
     base64::base64_encode,
     encode::{get_encoding_type, EncodingType},
@@ -18,27 +20,27 @@ use crate::encoders::{
 use super::Header;
 
 /// Unstructured text e-mail header.
-pub struct Text {
-    pub text: String,
+pub struct Text<'x> {
+    pub text: Cow<'x, str>,
 }
 
-impl Text {
+impl<'x> Text<'x> {
     /// Create a new unstructured text header
-    pub fn new(text: impl Into<String>) -> Self {
+    pub fn new(text: impl Into<Cow<'x, str>>) -> Self {
         Self { text: text.into() }
     }
 }
 
-impl<'x, T> From<T> for Text
+impl<'x, T> From<T> for Text<'x>
 where
-    T: Into<String>,
+    T: Into<Cow<'x, str>>,
 {
     fn from(value: T) -> Self {
         Self::new(value)
     }
 }
 
-impl Header for Text {
+impl<'x> Header for Text<'x> {
     fn write_header(
         &self,
         mut output: impl std::io::Write,

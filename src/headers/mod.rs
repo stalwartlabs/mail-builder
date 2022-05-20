@@ -28,56 +28,56 @@ pub trait Header {
     fn write_header(&self, output: impl Write, bytes_written: usize) -> io::Result<usize>;
 }
 
-pub enum HeaderType {
-    Address(Address),
+pub enum HeaderType<'x> {
+    Address(Address<'x>),
     Date(Date),
-    MessageId(MessageId),
-    Raw(Raw),
-    Text(Text),
-    URL(URL),
-    ContentType(ContentType),
+    MessageId(MessageId<'x>),
+    Raw(Raw<'x>),
+    Text(Text<'x>),
+    URL(URL<'x>),
+    ContentType(ContentType<'x>),
 }
 
-impl From<Address> for HeaderType {
-    fn from(value: Address) -> Self {
+impl<'x> From<Address<'x>> for HeaderType<'x> {
+    fn from(value: Address<'x>) -> Self {
         HeaderType::Address(value)
     }
 }
 
-impl From<ContentType> for HeaderType {
-    fn from(value: ContentType) -> Self {
+impl<'x> From<ContentType<'x>> for HeaderType<'x> {
+    fn from(value: ContentType<'x>) -> Self {
         HeaderType::ContentType(value)
     }
 }
 
-impl From<Date> for HeaderType {
+impl<'x> From<Date> for HeaderType<'x> {
     fn from(value: Date) -> Self {
         HeaderType::Date(value)
     }
 }
-impl From<MessageId> for HeaderType {
-    fn from(value: MessageId) -> Self {
+impl<'x> From<MessageId<'x>> for HeaderType<'x> {
+    fn from(value: MessageId<'x>) -> Self {
         HeaderType::MessageId(value)
     }
 }
-impl From<Raw> for HeaderType {
-    fn from(value: Raw) -> Self {
+impl<'x> From<Raw<'x>> for HeaderType<'x> {
+    fn from(value: Raw<'x>) -> Self {
         HeaderType::Raw(value)
     }
 }
-impl From<Text> for HeaderType {
-    fn from(value: Text) -> Self {
+impl<'x> From<Text<'x>> for HeaderType<'x> {
+    fn from(value: Text<'x>) -> Self {
         HeaderType::Text(value)
     }
 }
 
-impl From<URL> for HeaderType {
-    fn from(value: URL) -> Self {
+impl<'x> From<URL<'x>> for HeaderType<'x> {
+    fn from(value: URL<'x>) -> Self {
         HeaderType::URL(value)
     }
 }
 
-impl Header for HeaderType {
+impl<'x> Header for HeaderType<'x> {
     fn write_header(&self, output: impl Write, bytes_written: usize) -> io::Result<usize> {
         match self {
             HeaderType::Address(value) => value.write_header(output, bytes_written),
@@ -91,7 +91,7 @@ impl Header for HeaderType {
     }
 }
 
-impl HeaderType {
+impl<'x> HeaderType<'x> {
     pub fn as_content_type(&self) -> Option<&ContentType> {
         match self {
             HeaderType::ContentType(value) => Some(value),

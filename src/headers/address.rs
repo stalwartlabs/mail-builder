@@ -9,32 +9,37 @@
  * except according to those terms.
  */
 
+use std::borrow::Cow;
+
 use crate::encoders::encode::rfc2047_encode;
 
 use super::Header;
 
 /// RFC5322 e-mail address
-pub struct EmailAddress {
-    pub name: Option<String>,
-    pub email: String,
+pub struct EmailAddress<'x> {
+    pub name: Option<Cow<'x, str>>,
+    pub email: Cow<'x, str>,
 }
 
 /// RFC5322 grouped e-mail addresses
-pub struct GroupedAddresses {
-    pub name: Option<String>,
-    pub addresses: Vec<Address>,
+pub struct GroupedAddresses<'x> {
+    pub name: Option<Cow<'x, str>>,
+    pub addresses: Vec<Address<'x>>,
 }
 
 /// RFC5322 address
-pub enum Address {
-    Address(EmailAddress),
-    Group(GroupedAddresses),
-    List(Vec<Address>),
+pub enum Address<'x> {
+    Address(EmailAddress<'x>),
+    Group(GroupedAddresses<'x>),
+    List(Vec<Address<'x>>),
 }
 
-impl Address {
+impl<'x> Address<'x> {
     /// Create an RFC5322 e-mail address
-    pub fn new_address(name: Option<impl Into<String>>, email: impl Into<String>) -> Self {
+    pub fn new_address(
+        name: Option<impl Into<Cow<'x, str>>>,
+        email: impl Into<Cow<'x, str>>,
+    ) -> Self {
         Address::Address(EmailAddress {
             name: name.map(|v| v.into()),
             email: email.into(),
@@ -42,7 +47,7 @@ impl Address {
     }
 
     /// Create an RFC5322 grouped e-mail address
-    pub fn new_group(name: Option<impl Into<String>>, addresses: Vec<Address>) -> Self {
+    pub fn new_group(name: Option<impl Into<Cow<'x, str>>>, addresses: Vec<Address<'x>>) -> Self {
         Address::Group(GroupedAddresses {
             name: name.map(|v| v.into()),
             addresses,
@@ -50,11 +55,11 @@ impl Address {
     }
 
     /// Create an address list
-    pub fn new_list(items: Vec<Address>) -> Self {
+    pub fn new_list(items: Vec<Address<'x>>) -> Self {
         Address::List(items)
     }
 
-    pub fn unwrap_address(&self) -> &EmailAddress {
+    pub fn unwrap_address(&self) -> &EmailAddress<'x> {
         match self {
             Address::Address(address) => address,
             _ => panic!("Address is not an EmailAddress"),
@@ -62,7 +67,7 @@ impl Address {
     }
 }
 
-impl<'x> From<(&'x str, &'x str)> for Address {
+impl<'x> From<(&'x str, &'x str)> for Address<'x> {
     fn from(value: (&'x str, &'x str)) -> Self {
         Address::Address(EmailAddress {
             name: Some(value.0.into()),
@@ -71,16 +76,16 @@ impl<'x> From<(&'x str, &'x str)> for Address {
     }
 }
 
-impl From<(String, String)> for Address {
+impl<'x> From<(String, String)> for Address<'x> {
     fn from(value: (String, String)) -> Self {
         Address::Address(EmailAddress {
-            name: Some(value.0),
-            email: value.1,
+            name: Some(value.0.into()),
+            email: value.1.into(),
         })
     }
 }
 
-impl<'x> From<&'x str> for Address {
+impl<'x> From<&'x str> for Address<'x> {
     fn from(value: &'x str) -> Self {
         Address::Address(EmailAddress {
             name: None,
@@ -89,28 +94,28 @@ impl<'x> From<&'x str> for Address {
     }
 }
 
-impl From<String> for Address {
+impl<'x> From<String> for Address<'x> {
     fn from(value: String) -> Self {
         Address::Address(EmailAddress {
             name: None,
-            email: value,
+            email: value.into(),
         })
     }
 }
 
-impl<'x, T> From<Vec<T>> for Address
+impl<'x, T> From<Vec<T>> for Address<'x>
 where
-    T: Into<Address>,
+    T: Into<Address<'x>>,
 {
     fn from(value: Vec<T>) -> Self {
         Address::new_list(value.into_iter().map(|x| x.into()).collect())
     }
 }
 
-impl<'x, T, U> From<(U, Vec<T>)> for Address
+impl<'x, T, U> From<(U, Vec<T>)> for Address<'x>
 where
-    T: Into<Address>,
-    U: Into<String>,
+    T: Into<Address<'x>>,
+    U: Into<Cow<'x, str>>,
 {
     fn from(value: (U, Vec<T>)) -> Self {
         Address::Group(GroupedAddresses {
@@ -120,7 +125,7 @@ where
     }
 }
 
-impl Header for Address {
+impl<'x> Header for Address<'x> {
     fn write_header(
         &self,
         mut output: impl std::io::Write,
@@ -178,7 +183,7 @@ impl Header for Address {
     }
 }
 
-impl Header for EmailAddress {
+impl<'x> Header for EmailAddress<'x> {
     fn write_header(
         &self,
         mut output: impl std::io::Write,
@@ -203,7 +208,7 @@ impl Header for EmailAddress {
     }
 }
 
-impl Header for GroupedAddresses {
+impl<'x> Header for GroupedAddresses<'x> {
     fn write_header(
         &self,
         mut output: impl std::io::Write,

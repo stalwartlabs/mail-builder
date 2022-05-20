@@ -24,17 +24,18 @@
 //! ```rust
 //!     use mail_builder::MessageBuilder;
 //!
-//!     // Build a simple text message with a single attachment
-//!     let mut message = MessageBuilder::new();
-//!     message.from(("John Doe", "john@doe.com"));
-//!     message.to("jane@doe.com");
-//!     message.subject("Hello, world!");
-//!     message.text_body("Message contents go here.");
-//!     message.binary_attachment("image/png", "image.png", [1, 2, 3, 4].as_ref());
-//!
-//!     // Write message to memory
-//!     let mut output = Vec::new();
-//!     message.write_to(&mut output).unwrap();
+//!    // Build a simple text message with a single attachment
+//!    let eml = MessageBuilder::new()
+//!        .from(("John Doe", "john@doe.com"))
+//!        .to("jane@doe.com")
+//!        .subject("Hello, world!")
+//!        .text_body("Message contents go here.")
+//!        .binary_attachment("image/png", "image.png", [1, 2, 3, 4].as_ref())
+//!        .write_to_string()
+//!        .unwrap();
+//!        
+//!    // Print raw message
+//!    println!("{}", eml);
 //! ```
 //!
 //! More complex messages with grouped addresses, inline parts and
@@ -44,63 +45,62 @@
 //!     use mail_builder::{headers::url::URL, MessageBuilder};
 //!     use std::fs::File;
 //!
-//!     // Build a multipart message with text and HTML bodies,
-//!     // inline parts and attachments.
-//!     let mut message = MessageBuilder::new();
-//!     message.from(("John Doe", "john@doe.com"));
+//!    // Build a multipart message with text and HTML bodies,
+//!    // inline parts and attachments.
+//!    MessageBuilder::new()
+//!        .from(("John Doe", "john@doe.com"))
 //!
-//!     // To recipients
-//!     message.to(vec![
-//!         ("Antoine de Saint-Exupéry", "antoine@exupery.com"),
-//!         ("안녕하세요 세계", "test@test.com"),
-//!         ("Xin chào", "addr@addr.com"),
-//!     ]);
+//!        // To recipients
+//!        .to(vec![
+//!            ("Antoine de Saint-Exupéry", "antoine@exupery.com"),
+//!            ("안녕하세요 세계", "test@test.com"),
+//!            ("Xin chào", "addr@addr.com"),
+//!        ])
 //!
-//!     // BCC recipients using grouped addresses
-//!     message.bcc(vec![
-//!         (
-//!             "My Group",
-//!             vec![
-//!                 ("ASCII name", "addr1@addr7.com"),
-//!                 ("ハロー・ワールド", "addr2@addr6.com"),
-//!                 ("áéíóú", "addr3@addr5.com"),
-//!                 ("Γειά σου Κόσμε", "addr4@addr4.com"),
-//!             ],
-//!         ),
-//!         (
-//!             "Another Group",
-//!             vec![
-//!                 ("שלום עולם", "addr5@addr3.com"),
-//!                 ("ñandú come ñoquis", "addr6@addr2.com"),
-//!                 ("Recipient", "addr7@addr1.com"),
-//!             ],
-//!         ),
-//!     ]);
+//!        // BCC recipients using grouped addresses
+//!        .bcc(vec![
+//!            (
+//!                "My Group",
+//!                vec![
+//!                    ("ASCII name", "addr1@addr7.com"),
+//!                    ("ハロー・ワールド", "addr2@addr6.com"),
+//!                    ("áéíóú", "addr3@addr5.com"),
+//!                    ("Γειά σου Κόσμε", "addr4@addr4.com"),
+//!                ],
+//!            ),
+//!            (
+//!                "Another Group",
+//!                vec![
+//!                    ("שלום עולם", "addr5@addr3.com"),
+//!                    ("ñandú come ñoquis", "addr6@addr2.com"),
+//!                    ("Recipient", "addr7@addr1.com"),
+//!                ],
+//!            ),
+//!        ])
 //!
-//!     // Set RFC and custom headers
-//!     message.subject("Testing multipart messages");
-//!     message.in_reply_to(vec!["message-id-1", "message-id-2"]);
-//!     message.header("List-Archive", URL::new("http://example.com/archive"));
+//!        // Set RFC and custom headers
+//!        .subject("Testing multipart messages")
+//!        .in_reply_to(vec!["message-id-1", "message-id-2"])
+//!        .header("List-Archive", URL::new("http://example.com/archive"))
 //!
-//!     // Set HTML and plain text bodies
-//!     message.text_body("This is the text body!\n");
-//!     message.html_body("<p>HTML body with <img src=\"cid:my-image\"/>!</p>");
+//!        // Set HTML and plain text bodies
+//!        .text_body("This is the text body!\n")
+//!        .html_body("<p>HTML body with <img src=\"cid:my-image\"/>!</p>")
 //!
-//!     // Include an embedded image as an inline part
-//!     message.binary_inline("image/png", "cid:my-image", [0, 1, 2, 3, 4, 5].as_ref());
+//!        // Include an embedded image as an inline part
+//!        .binary_inline("image/png", "cid:my-image", [0, 1, 2, 3, 4, 5].as_ref())
+//!        .text_attachment("text/plain", "my fíle.txt", "Attachment contents go here.")
 //!
-//!     // Add a text and a binary attachment
-//!     message.text_attachment("text/plain", "my fíle.txt", "Attachment contents go here.");
-//!     message.binary_attachment(
-//!         "text/plain",
-//!         "ハロー・ワールド",
-//!         b"Binary contents go here.".as_ref(),
-//!     );
+//!        // Add text and binary attachments
+//!        .binary_attachment(
+//!            "text/plain",
+//!            "ハロー・ワールド",
+//!            b"Binary contents go here.".as_ref(),
+//!        )
 //!
-//!     // Write the message to a file
-//!     message
-//!         .write_to(File::create("message.eml").unwrap())
-//!         .unwrap();
+//!        // Write the message to a file
+//!        .write_to(File::create("message.eml").unwrap())
+//!        .unwrap();
 //! ```
 //!
 //! Nested MIME body structures can be created using the `body` method:
@@ -109,68 +109,66 @@
 //!     use mail_builder::{headers::address::Address, mime::MimePart, MessageBuilder};
 //!     use std::fs::File;
 //!
-//!     // Build a nested multipart message
-//!     let mut message = MessageBuilder::new();
+//!    // Build a nested multipart message
+//!    MessageBuilder::new()
+//!        .from(Address::new_address("John Doe".into(), "john@doe.com"))
+//!        .to(Address::new_address("Jane Doe".into(), "jane@doe.com"))
+//!        .subject("Nested multipart message")
 //!
-//!     message.from(Address::new_address("John Doe".into(), "john@doe.com"));
-//!     message.to(Address::new_address("Jane Doe".into(), "jane@doe.com"));
-//!     message.subject("Nested multipart message");
-//!
-//!     // Define the nested MIME body structure
-//!     message.body(MimePart::new_multipart(
-//!         "multipart/mixed",
-//!         vec![
-//!             MimePart::new_text("Part A contents go here...").inline(),
-//!             MimePart::new_multipart(
-//!                 "multipart/mixed",
-//!                 vec![
-//!                     MimePart::new_multipart(
-//!                         "multipart/alternative",
-//!                         vec![
-//!                             MimePart::new_multipart(
-//!                                 "multipart/mixed",
-//!                                 vec![
-//!                                     MimePart::new_text("Part B contents go here...").inline(),
-//!                                     MimePart::new_binary(
-//!                                         "image/jpeg",
-//!                                         "Part C contents go here...".as_bytes(),
-//!                                     )
-//!                                     .inline(),
-//!                                     MimePart::new_text("Part D contents go here...").inline(),
-//!                                 ],
-//!                             ),
-//!                             MimePart::new_multipart(
-//!                                 "multipart/related",
-//!                                 vec![
-//!                                     MimePart::new_html("Part E contents go here...").inline(),
-//!                                     MimePart::new_binary(
-//!                                         "image/jpeg",
-//!                                         "Part F contents go here...".as_bytes(),
-//!                                     ),
-//!                                 ],
-//!                             ),
-//!                         ],
-//!                     ),
-//!                     MimePart::new_binary("image/jpeg", "Part G contents go here...".as_bytes())
-//!                         .attachment("image_G.jpg"),
-//!                     MimePart::new_binary(
-//!                         "application/x-excel",
-//!                         "Part H contents go here...".as_bytes(),
-//!                     ),
-//!                     MimePart::new_binary(
-//!                         "x-message/rfc822",
-//!                         "Part J contents go here...".as_bytes(),
-//!                     ),
-//!                 ],
-//!             ),
-//!             MimePart::new_text("Part K contents go here...").inline(),
-//!         ],
-//!     ));
-//!
-//!     // Write the message to a file
-//!     message
-//!         .write_to(File::create("nested-message.eml").unwrap())
-//!         .unwrap();
+//!        // Define the nested MIME body structure
+//!        .body(MimePart::new_multipart(
+//!            "multipart/mixed",
+//!            vec![
+//!                MimePart::new_text("Part A contents go here...").inline(),
+//!                MimePart::new_multipart(
+//!                    "multipart/mixed",
+//!                    vec![
+//!                        MimePart::new_multipart(
+//!                            "multipart/alternative",
+//!                            vec![
+//!                                MimePart::new_multipart(
+//!                                    "multipart/mixed",
+//!                                    vec![
+//!                                        MimePart::new_text("Part B contents go here...").inline(),
+//!                                        MimePart::new_binary(
+//!                                            "image/jpeg",
+//!                                            "Part C contents go here...".as_bytes(),
+//!                                        )
+//!                                        .inline(),
+//!                                        MimePart::new_text("Part D contents go here...").inline(),
+//!                                    ],
+//!                                ),
+//!                                MimePart::new_multipart(
+//!                                    "multipart/related",
+//!                                    vec![
+//!                                        MimePart::new_html("Part E contents go here...").inline(),
+//!                                        MimePart::new_binary(
+//!                                            "image/jpeg",
+//!                                            "Part F contents go here...".as_bytes(),
+//!                                        ),
+//!                                    ],
+//!                                ),
+//!                            ],
+//!                        ),
+//!                        MimePart::new_binary("image/jpeg", "Part G contents go here...".as_bytes())
+//!                            .attachment("image_G.jpg"),
+//!                        MimePart::new_binary(
+//!                            "application/x-excel",
+//!                            "Part H contents go here...".as_bytes(),
+//!                        ),
+//!                        MimePart::new_binary(
+//!                            "x-message/rfc822",
+//!                            "Part J contents go here...".as_bytes(),
+//!                        ),
+//!                    ],
+//!                ),
+//!                MimePart::new_text("Part K contents go here...").inline(),
+//!            ],
+//!        ))
+//!        
+//!        // Write the message to a file
+//!        .write_to(File::create("nested-message.eml").unwrap())
+//!        .unwrap();
 //! ```
 //!
 //! Please note that this library does not support parsing e-mail messages as this functionality is provided separately by the [`mail-parser`](https://crates.io/crates/mail-parser) crate.
@@ -253,122 +251,133 @@ impl<'x> MessageBuilder<'x> {
 
     /// Set the Message-ID header. If no Message-ID header is set, one will be
     /// generated automatically.
-    pub fn message_id(&mut self, value: impl Into<MessageId<'x>>) {
-        self.header("Message-ID", value.into());
+    pub fn message_id(self, value: impl Into<MessageId<'x>>) -> Self {
+        self.header("Message-ID", value.into())
     }
 
     /// Set the In-Reply-To header.
-    pub fn in_reply_to(&mut self, value: impl Into<MessageId<'x>>) {
-        self.header("In-Reply-To", value.into());
+    pub fn in_reply_to(self, value: impl Into<MessageId<'x>>) -> Self {
+        self.header("In-Reply-To", value.into())
     }
 
     /// Set the References header.
-    pub fn references(&mut self, value: impl Into<MessageId<'x>>) {
-        self.header("References", value.into());
+    pub fn references(self, value: impl Into<MessageId<'x>>) -> Self {
+        self.header("References", value.into())
     }
 
     /// Set the Sender header.
-    pub fn sender(&mut self, value: impl Into<Address<'x>>) {
-        self.header("Sender", value.into());
+    pub fn sender(self, value: impl Into<Address<'x>>) -> Self {
+        self.header("Sender", value.into())
     }
 
     /// Set the From header.
-    pub fn from(&mut self, value: impl Into<Address<'x>>) {
-        self.header("From", value.into());
+    pub fn from(self, value: impl Into<Address<'x>>) -> Self {
+        self.header("From", value.into())
     }
 
     /// Set the To header.
-    pub fn to(&mut self, value: impl Into<Address<'x>>) {
-        self.header("To", value.into());
+    pub fn to(self, value: impl Into<Address<'x>>) -> Self {
+        self.header("To", value.into())
     }
 
     /// Set the Cc header.
-    pub fn cc(&mut self, value: impl Into<Address<'x>>) {
-        self.header("Cc", value.into());
+    pub fn cc(self, value: impl Into<Address<'x>>) -> Self {
+        self.header("Cc", value.into())
     }
 
     /// Set the Bcc header.
-    pub fn bcc(&mut self, value: impl Into<Address<'x>>) {
-        self.header("Bcc", value.into());
+    pub fn bcc(self, value: impl Into<Address<'x>>) -> Self {
+        self.header("Bcc", value.into())
     }
 
     /// Set the Reply-To header.
-    pub fn reply_to(&mut self, value: impl Into<Address<'x>>) {
-        self.header("Reply-To", value.into());
+    pub fn reply_to(self, value: impl Into<Address<'x>>) -> Self {
+        self.header("Reply-To", value.into())
     }
 
     /// Set the Subject header.
-    pub fn subject(&mut self, value: impl Into<Text<'x>>) {
-        self.header("Subject", value.into());
+    pub fn subject(self, value: impl Into<Text<'x>>) -> Self {
+        self.header("Subject", value.into())
     }
 
     /// Set the Date header. If no Date header is set, one will be generated
     /// automatically.
-    pub fn date(&mut self, value: impl Into<Date>) {
-        self.header("Date", value.into());
+    pub fn date(self, value: impl Into<Date>) -> Self {
+        self.header("Date", value.into())
     }
 
     /// Add a custom header.
-    pub fn header(&mut self, header: impl Into<Cow<'x, str>>, value: impl Into<HeaderType<'x>>) {
+    pub fn header(
+        mut self,
+        header: impl Into<Cow<'x, str>>,
+        value: impl Into<HeaderType<'x>>,
+    ) -> Self {
         self.headers
             .entry(header.into())
             .or_insert_with(Vec::new)
             .push(value.into());
+        self
     }
 
     /// Set the plain text body of the message. Note that only one plain text body
     /// per message can be set using this function.
     /// To build more complex MIME body structures, use the `body` method instead.
-    pub fn text_body(&mut self, value: impl Into<Cow<'x, str>>) {
+    pub fn text_body(mut self, value: impl Into<Cow<'x, str>>) -> Self {
         self.text_body = Some(MimePart::new_text(value));
+        self
     }
 
     /// Set the HTML body of the message. Note that only one HTML body
     /// per message can be set using this function.
     /// To build more complex MIME body structures, use the `body` method instead.
-    pub fn html_body(&mut self, value: impl Into<Cow<'x, str>>) {
+    pub fn html_body(mut self, value: impl Into<Cow<'x, str>>) -> Self {
         self.html_body = Some(MimePart::new_html(value));
+        self
     }
 
     /// Add a binary attachment to the message.
     pub fn binary_attachment(
-        &mut self,
+        mut self,
         content_type: impl Into<Cow<'x, str>>,
         filename: impl Into<Cow<'x, str>>,
         value: impl Into<Cow<'x, [u8]>>,
-    ) {
+    ) -> Self {
         self.attachments
             .get_or_insert_with(Vec::new)
             .push(MimePart::new_binary(content_type, value).attachment(filename));
+        self
     }
 
     /// Add a text attachment to the message.
     pub fn text_attachment(
-        &mut self,
+        mut self,
         content_type: impl Into<Cow<'x, str>>,
         filename: impl Into<Cow<'x, str>>,
         value: impl Into<Cow<'x, str>>,
-    ) {
+    ) -> Self {
         self.attachments
             .get_or_insert_with(Vec::new)
             .push(MimePart::new_text_other(content_type, value).attachment(filename));
+        self
     }
 
     /// Add an inline binary to the message.
     pub fn binary_inline(
-        &mut self,
+        mut self,
         content_type: impl Into<Cow<'x, str>>,
         cid: impl Into<Cow<'x, str>>,
         value: impl Into<Cow<'x, [u8]>>,
-    ) {
+    ) -> Self {
         self.attachments
             .get_or_insert_with(Vec::new)
             .push(MimePart::new_binary(content_type, value).inline().cid(cid));
+        self
     }
 
     /// Set a custom MIME body structure.
-    pub fn body(&mut self, value: MimePart<'x>) {
+    pub fn body(mut self, value: MimePart<'x>) -> Self {
         self.body = Some(value);
+        self
     }
 
     /// Build the message.
@@ -443,6 +452,20 @@ impl<'x> MessageBuilder<'x> {
 
         Ok(())
     }
+
+    /// Build message to a Vec<u8>.
+    pub fn write_to_vec(self) -> io::Result<Vec<u8>> {
+        let mut output = Vec::new();
+        self.write_to(&mut output)?;
+        Ok(output)
+    }
+
+    /// Build message to a String.
+    pub fn write_to_string(self) -> io::Result<String> {
+        let mut output = Vec::new();
+        self.write_to(&mut output)?;
+        String::from_utf8(output).map_err(|err| io::Error::new(io::ErrorKind::Other, err))
+    }
 }
 
 #[cfg(test)]
@@ -458,111 +481,112 @@ mod tests {
 
     #[test]
     fn build_nested_message() {
-        let mut message = MessageBuilder::new();
-
-        message.from(Address::new_address("John Doe".into(), "john@doe.com"));
-        message.to(Address::new_address("Jane Doe".into(), "jane@doe.com"));
-        message.subject("RFC 8621 Section 4.1.4 test");
-
-        message.body(MimePart::new_multipart(
-            "multipart/mixed",
-            vec![
-                MimePart::new_text("Part A contents go here...").inline(),
-                MimePart::new_multipart(
-                    "multipart/mixed",
-                    vec![
-                        MimePart::new_multipart(
-                            "multipart/alternative",
-                            vec![
-                                MimePart::new_multipart(
-                                    "multipart/mixed",
-                                    vec![
-                                        MimePart::new_text("Part B contents go here...").inline(),
-                                        MimePart::new_binary(
-                                            "image/jpeg",
-                                            "Part C contents go here...".as_bytes(),
-                                        )
-                                        .inline(),
-                                        MimePart::new_text("Part D contents go here...").inline(),
-                                    ],
-                                ),
-                                MimePart::new_multipart(
-                                    "multipart/related",
-                                    vec![
-                                        MimePart::new_html("Part E contents go here...").inline(),
-                                        MimePart::new_binary(
-                                            "image/jpeg",
-                                            "Part F contents go here...".as_bytes(),
-                                        ),
-                                    ],
-                                ),
-                            ],
-                        ),
-                        MimePart::new_binary("image/jpeg", "Part G contents go here...".as_bytes())
+        let output = MessageBuilder::new()
+            .from(Address::new_address("John Doe".into(), "john@doe.com"))
+            .to(Address::new_address("Jane Doe".into(), "jane@doe.com"))
+            .subject("RFC 8621 Section 4.1.4 test")
+            .body(MimePart::new_multipart(
+                "multipart/mixed",
+                vec![
+                    MimePart::new_text("Part A contents go here...").inline(),
+                    MimePart::new_multipart(
+                        "multipart/mixed",
+                        vec![
+                            MimePart::new_multipart(
+                                "multipart/alternative",
+                                vec![
+                                    MimePart::new_multipart(
+                                        "multipart/mixed",
+                                        vec![
+                                            MimePart::new_text("Part B contents go here...")
+                                                .inline(),
+                                            MimePart::new_binary(
+                                                "image/jpeg",
+                                                "Part C contents go here...".as_bytes(),
+                                            )
+                                            .inline(),
+                                            MimePart::new_text("Part D contents go here...")
+                                                .inline(),
+                                        ],
+                                    ),
+                                    MimePart::new_multipart(
+                                        "multipart/related",
+                                        vec![
+                                            MimePart::new_html("Part E contents go here...")
+                                                .inline(),
+                                            MimePart::new_binary(
+                                                "image/jpeg",
+                                                "Part F contents go here...".as_bytes(),
+                                            ),
+                                        ],
+                                    ),
+                                ],
+                            ),
+                            MimePart::new_binary(
+                                "image/jpeg",
+                                "Part G contents go here...".as_bytes(),
+                            )
                             .attachment("image_G.jpg"),
-                        MimePart::new_binary(
-                            "application/x-excel",
-                            "Part H contents go here...".as_bytes(),
-                        ),
-                        MimePart::new_binary(
-                            "x-message/rfc822",
-                            "Part J contents go here...".as_bytes(),
-                        ),
-                    ],
-                ),
-                MimePart::new_text("Part K contents go here...").inline(),
-            ],
-        ));
-
-        let mut output = Vec::new();
-        message.write_to(&mut output).unwrap();
+                            MimePart::new_binary(
+                                "application/x-excel",
+                                "Part H contents go here...".as_bytes(),
+                            ),
+                            MimePart::new_binary(
+                                "x-message/rfc822",
+                                "Part J contents go here...".as_bytes(),
+                            ),
+                        ],
+                    ),
+                    MimePart::new_text("Part K contents go here...").inline(),
+                ],
+            ))
+            .write_to_vec()
+            .unwrap();
         Message::parse(&output).unwrap();
         //fs::write("test.yaml", &serde_yaml::to_string(&message).unwrap()).unwrap();
     }
 
     #[test]
     fn build_message() {
-        let mut message = MessageBuilder::new();
-        message.from(("John Doe", "john@doe.com"));
-        message.to(vec![
-            ("Antoine de Saint-Exupéry", "antoine@exupery.com"),
-            ("안녕하세요 세계", "test@test.com"),
-            ("Xin chào", "addr@addr.com"),
-        ]);
-        message.bcc(vec![
-            (
-                "Привет, мир",
-                vec![
-                    ("ASCII recipient", "addr1@addr7.com"),
-                    ("ハロー・ワールド", "addr2@addr6.com"),
-                    ("áéíóú", "addr3@addr5.com"),
-                    ("Γειά σου Κόσμε", "addr4@addr4.com"),
-                ],
-            ),
-            (
-                "Hello world",
-                vec![
-                    ("שלום עולם", "addr5@addr3.com"),
-                    ("¡El ñandú comió ñoquis!", "addr6@addr2.com"),
-                    ("Recipient", "addr7@addr1.com"),
-                ],
-            ),
-        ]);
-        message.header("List-Archive", URL::new("http://example.com/archive"));
-        message.subject("Hello world!");
-
-        message.text_body("Hello, world!\n".repeat(20));
-        message.html_body("<p>¡Hola Mundo!</p>".repeat(20));
-        message.binary_inline("image/png", "cid:image", [0, 1, 2, 3, 4, 5].as_ref());
-        message.text_attachment("text/plain", "my fíle.txt", "안녕하세요 세계".repeat(20));
-        message.binary_attachment(
-            "text/plain",
-            "ハロー・ワールド",
-            "ハロー・ワールド".repeat(20).into_bytes(),
-        );
-
-        let mut output = Vec::new();
-        message.write_to(&mut output).unwrap();
+        let output = MessageBuilder::new()
+            .from(("John Doe", "john@doe.com"))
+            .to(vec![
+                ("Antoine de Saint-Exupéry", "antoine@exupery.com"),
+                ("안녕하세요 세계", "test@test.com"),
+                ("Xin chào", "addr@addr.com"),
+            ])
+            .bcc(vec![
+                (
+                    "Привет, мир",
+                    vec![
+                        ("ASCII recipient", "addr1@addr7.com"),
+                        ("ハロー・ワールド", "addr2@addr6.com"),
+                        ("áéíóú", "addr3@addr5.com"),
+                        ("Γειά σου Κόσμε", "addr4@addr4.com"),
+                    ],
+                ),
+                (
+                    "Hello world",
+                    vec![
+                        ("שלום עולם", "addr5@addr3.com"),
+                        ("¡El ñandú comió ñoquis!", "addr6@addr2.com"),
+                        ("Recipient", "addr7@addr1.com"),
+                    ],
+                ),
+            ])
+            .header("List-Archive", URL::new("http://example.com/archive"))
+            .subject("Hello world!")
+            .text_body("Hello, world!\n".repeat(20))
+            .html_body("<p>¡Hola Mundo!</p>".repeat(20))
+            .binary_inline("image/png", "cid:image", [0, 1, 2, 3, 4, 5].as_ref())
+            .text_attachment("text/plain", "my fíle.txt", "안녕하세요 세계".repeat(20))
+            .binary_attachment(
+                "text/plain",
+                "ハロー・ワールド",
+                "ハロー・ワールド".repeat(20).into_bytes(),
+            )
+            .write_to_vec()
+            .unwrap();
         Message::parse(&output).unwrap();
     }
 }

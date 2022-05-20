@@ -13,15 +13,15 @@ use mail_builder::MessageBuilder;
 
 fn main() {
     // Build a simple text message with a single attachment
-    let mut message = MessageBuilder::new();
-    message.from(("John Doe", "john@doe.com"));
-    message.to("jane@doe.com");
-    message.subject("Hello, world!");
-    message.text_body("Message contents go here.");
-    message.binary_attachment("image/png", "image.png", [1, 2, 3, 4].as_ref());
+    let eml = MessageBuilder::new()
+        .from(("John Doe", "john@doe.com"))
+        .to("jane@doe.com")
+        .subject("Hello, world!")
+        .text_body("Message contents go here.")
+        .binary_attachment("image/png", "image.png", [1, 2, 3, 4].as_ref())
+        .write_to_string()
+        .unwrap();
 
-    // Write message to memory
-    let mut output = Vec::new();
-    message.write_to(&mut output).unwrap();
-    println!("{}", String::from_utf8_lossy(&output));
+    // Print raw message
+    println!("{}", eml);
 }

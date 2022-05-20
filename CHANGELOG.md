@@ -1,3 +1,8 @@
+mail-builder 0.2.0
+================================
+- Improved API
+- Added `write_to_vec` and `write_to_string`.
+
 mail-builder 0.1.3
 ================================
 - Bug fixes.

@@ -12,16 +12,17 @@ Building e-mail messages is straightforward:
 
 ```rust
     // Build a simple text message with a single attachment
-    let mut message = MessageBuilder::new();
-    message.from(("John Doe", "john@doe.com"));
-    message.to("jane@doe.com");
-    message.subject("Hello, world!");
-    message.text_body("Message contents go here.");
-    message.binary_attachment("image/png", "image.png", [1, 2, 3, 4].as_ref());
-
-    // Write message to memory
-    let mut output = Vec::new();
-    message.write_to(&mut output).unwrap();
+    let eml = MessageBuilder::new()
+        .from(("John Doe", "john@doe.com"))
+        .to("jane@doe.com")
+        .subject("Hello, world!")
+        .text_body("Message contents go here.")
+        .binary_attachment("image/png", "image.png", [1, 2, 3, 4].as_ref())
+        .write_to_string()
+        .unwrap();
+        
+    // Print raw message
+    println!("{}", eml);
 ```
 
 More complex messages with grouped addresses, inline parts and 
@@ -30,59 +31,58 @@ multipart/alternative sections can also be easily built:
 ```rust
     // Build a multipart message with text and HTML bodies,
     // inline parts and attachments.
-    let mut message = MessageBuilder::new();
-    message.from(("John Doe", "john@doe.com"));
+    MessageBuilder::new()
+        .from(("John Doe", "john@doe.com"))
 
-    // To recipients
-    message.to(vec![
-        ("Antoine de Saint-Exupéry", "antoine@exupery.com"),
-        ("안녕하세요 세계", "test@test.com"),
-        ("Xin chào", "addr@addr.com"),
-    ]);
+        // To recipients
+        .to(vec![
+            ("Antoine de Saint-Exupéry", "antoine@exupery.com"),
+            ("안녕하세요 세계", "test@test.com"),
+            ("Xin chào", "addr@addr.com"),
+        ])
 
-    // BCC recipients using grouped addresses
-    message.bcc(vec![
-        (
-            "My Group",
-            vec![
-                ("ASCII name", "addr1@addr7.com"),
-                ("ハロー・ワールド", "addr2@addr6.com"),
-                ("áéíóú", "addr3@addr5.com"),
-                ("Γειά σου Κόσμε", "addr4@addr4.com"),
-            ],
-        ),
-        (
-            "Another Group",
-            vec![
-                ("שלום עולם", "addr5@addr3.com"),
-                ("ñandú come ñoquis", "addr6@addr2.com"),
-                ("Recipient", "addr7@addr1.com"),
-            ],
-        ),
-    ]);
+        // BCC recipients using grouped addresses
+        .bcc(vec![
+            (
+                "My Group",
+                vec![
+                    ("ASCII name", "addr1@addr7.com"),
+                    ("ハロー・ワールド", "addr2@addr6.com"),
+                    ("áéíóú", "addr3@addr5.com"),
+                    ("Γειά σου Κόσμε", "addr4@addr4.com"),
+                ],
+            ),
+            (
+                "Another Group",
+                vec![
+                    ("שלום עולם", "addr5@addr3.com"),
+                    ("ñandú come ñoquis", "addr6@addr2.com"),
+                    ("Recipient", "addr7@addr1.com"),
+                ],
+            ),
+        ])
 
-    // Set RFC and custom headers
-    message.subject("Testing multipart messages");
-    message.in_reply_to(vec!["message-id-1", "message-id-2"]);
-    message.header("List-Archive", URL::new("http://example.com/archive"));
+        // Set RFC and custom headers
+        .subject("Testing multipart messages") 
+        .in_reply_to(vec!["message-id-1", "message-id-2"])
+        .header("List-Archive", URL::new("http://example.com/archive"))
 
-    // Set HTML and plain text bodies
-    message.text_body("This is the text body!\n");
-    message.html_body("<p>HTML body with <img src=\"cid:my-image\"/>!</p>");
+        // Set HTML and plain text bodies
+        .text_body("This is the text body!\n") 
+        .html_body("<p>HTML body with <img src=\"cid:my-image\"/>!</p>") 
 
-    // Include an embedded image as an inline part
-    message.binary_inline("image/png", "cid:my-image", [0, 1, 2, 3, 4, 5].as_ref());
+        // Include an embedded image as an inline part
+        .binary_inline("image/png", "cid:my-image", [0, 1, 2, 3, 4, 5].as_ref())
+        .text_attachment("text/plain", "my fíle.txt", "Attachment contents go here.") 
 
-    // Add a text and a binary attachment
-    message.text_attachment("text/plain", "my fíle.txt", "Attachment contents go here.");
-    message.binary_attachment(
-        "text/plain",
-        "ハロー・ワールド",
-        b"Binary contents go here.".as_ref(),
-    );
+        // Add text and binary attachments
+        .binary_attachment(
+            "text/plain",
+            "ハロー・ワールド",
+            b"Binary contents go here.".as_ref(),
+        )
 
-    // Write the message to a file
-    message
+        // Write the message to a file
         .write_to(File::create("message.eml").unwrap())
         .unwrap();
 ```
@@ -91,65 +91,63 @@ Nested MIME body structures can be created using the `body` method:
 
 ```rust
     // Build a nested multipart message
-    let mut message = MessageBuilder::new();
+    MessageBuilder::new()
+        .from(Address::new_address("John Doe".into(), "john@doe.com"))
+        .to(Address::new_address("Jane Doe".into(), "jane@doe.com"))
+        .subject("Nested multipart message")
 
-    message.from(Address::new_address("John Doe".into(), "john@doe.com"));
-    message.to(Address::new_address("Jane Doe".into(), "jane@doe.com"));
-    message.subject("Nested multipart message");
-
-    // Define the nested MIME body structure
-    message.body(MimePart::new_multipart(
-        "multipart/mixed",
-        vec![
-            MimePart::new_text("Part A contents go here...").inline(),
-            MimePart::new_multipart(
-                "multipart/mixed",
-                vec![
-                    MimePart::new_multipart(
-                        "multipart/alternative",
-                        vec![
-                            MimePart::new_multipart(
-                                "multipart/mixed",
-                                vec![
-                                    MimePart::new_text("Part B contents go here...").inline(),
-                                    MimePart::new_binary(
-                                        "image/jpeg",
-                                        "Part C contents go here...".as_bytes(),
-                                    )
-                                    .inline(),
-                                    MimePart::new_text("Part D contents go here...").inline(),
-                                ],
-                            ),
-                            MimePart::new_multipart(
-                                "multipart/related",
-                                vec![
-                                    MimePart::new_html("Part E contents go here...").inline(),
-                                    MimePart::new_binary(
-                                        "image/jpeg",
-                                        "Part F contents go here...".as_bytes(),
-                                    ),
-                                ],
-                            ),
-                        ],
-                    ),
-                    MimePart::new_binary("image/jpeg", "Part G contents go here...".as_bytes())
-                        .attachment("image_G.jpg"),
-                    MimePart::new_binary(
-                        "application/x-excel",
-                        "Part H contents go here...".as_bytes(),
-                    ),
-                    MimePart::new_binary(
-                        "x-message/rfc822",
-                        "Part J contents go here...".as_bytes(),
-                    ),
-                ],
-            ),
-            MimePart::new_text("Part K contents go here...").inline(),
-        ],
-    ));
-
-    // Write the message to a file
-    message
+        // Define the nested MIME body structure
+        .body(MimePart::new_multipart(
+            "multipart/mixed",
+            vec![
+                MimePart::new_text("Part A contents go here...").inline(),
+                MimePart::new_multipart(
+                    "multipart/mixed",
+                    vec![
+                        MimePart::new_multipart(
+                            "multipart/alternative",
+                            vec![
+                                MimePart::new_multipart(
+                                    "multipart/mixed",
+                                    vec![
+                                        MimePart::new_text("Part B contents go here...").inline(),
+                                        MimePart::new_binary(
+                                            "image/jpeg",
+                                            "Part C contents go here...".as_bytes(),
+                                        )
+                                        .inline(),
+                                        MimePart::new_text("Part D contents go here...").inline(),
+                                    ],
+                                ),
+                                MimePart::new_multipart(
+                                    "multipart/related",
+                                    vec![
+                                        MimePart::new_html("Part E contents go here...").inline(),
+                                        MimePart::new_binary(
+                                            "image/jpeg",
+                                            "Part F contents go here...".as_bytes(),
+                                        ),
+                                    ],
+                                ),
+                            ],
+                        ),
+                        MimePart::new_binary("image/jpeg", "Part G contents go here...".as_bytes())
+                            .attachment("image_G.jpg"),
+                        MimePart::new_binary(
+                            "application/x-excel",
+                            "Part H contents go here...".as_bytes(),
+                        ),
+                        MimePart::new_binary(
+                            "x-message/rfc822",
+                            "Part J contents go here...".as_bytes(),
+                        ),
+                    ],
+                ),
+                MimePart::new_text("Part K contents go here...").inline(),
+            ],
+        ))
+        
+        // Write the message to a file
         .write_to(File::create("nested-message.eml").unwrap())
         .unwrap();
 ```

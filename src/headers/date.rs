@@ -11,7 +11,7 @@
 
 use std::io::{self, Write};
 
-use chrono::{LocalResult, TimeZone, Utc};
+use chrono::{DateTime, LocalResult, TimeZone, Utc};
 
 use super::Header;
 
@@ -31,6 +31,12 @@ impl Date {
         Self {
             date: Utc::now().timestamp(),
         }
+    }
+}
+
+impl From<DateTime<Utc>> for Date {
+    fn from(datetime: DateTime<Utc>) -> Self {
+        Date::new(datetime.timestamp())
     }
 }
 

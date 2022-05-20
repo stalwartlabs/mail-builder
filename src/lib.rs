@@ -319,6 +319,20 @@ impl<'x> MessageBuilder<'x> {
         self
     }
 
+    /// Set custom headers.
+    pub fn headers<T, U, V>(mut self, header: T, values: U) -> Self
+    where
+        T: Into<Cow<'x, str>>,
+        U: IntoIterator<Item = V>,
+        V: Into<HeaderType<'x>>,
+    {
+        self.headers.insert(
+            header.into(),
+            values.into_iter().map(|v| v.into()).collect(),
+        );
+        self
+    }
+
     /// Set the plain text body of the message. Note that only one plain text body
     /// per message can be set using this function.
     /// To build more complex MIME body structures, use the `body` method instead.

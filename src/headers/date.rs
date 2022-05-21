@@ -40,6 +40,12 @@ impl From<DateTime<Utc>> for Date {
     }
 }
 
+impl From<&DateTime<Utc>> for Date {
+    fn from(datetime: &DateTime<Utc>) -> Self {
+        Date::new(datetime.timestamp())
+    }
+}
+
 impl Header for Date {
     fn write_header(&self, mut output: impl Write, _bytes_written: usize) -> io::Result<usize> {
         if let LocalResult::Single(dt) = Utc.timestamp_opt(self.date, 0) {

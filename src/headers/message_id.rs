@@ -58,6 +58,14 @@ impl<'x> From<&[&'x str]> for MessageId<'x> {
     }
 }
 
+impl<'x> From<&'x [String]> for MessageId<'x> {
+    fn from(value: &'x [String]) -> Self {
+        MessageId {
+            id: value.iter().map(|s| s.into()).collect(),
+        }
+    }
+}
+
 impl<'x, T> From<Vec<T>> for MessageId<'x>
 where
     T: Into<Cow<'x, str>>,

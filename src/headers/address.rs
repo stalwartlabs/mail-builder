@@ -112,6 +112,21 @@ where
     }
 }
 
+impl<'x, T> From<&'x T> for Address<'x> {
+    fn from(s: &'x T) -> Self {
+        s.into()
+    }
+}
+
+impl<'x, T> From<&'x [T]> for Address<'x>
+where
+    T: Into<Address<'x>>,
+{
+    fn from(value: &'x [T]) -> Self {
+        Address::new_list(value.iter().map(|x| x.into()).collect())
+    }
+}
+
 impl<'x, T, U> From<(U, Vec<T>)> for Address<'x>
 where
     T: Into<Address<'x>>,

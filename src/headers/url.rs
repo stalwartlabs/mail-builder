@@ -58,6 +58,14 @@ impl<'x> From<&[&'x str]> for URL<'x> {
     }
 }
 
+impl<'x> From<&'x [String]> for URL<'x> {
+    fn from(value: &'x [String]) -> Self {
+        URL {
+            url: value.iter().map(|s| s.into()).collect(),
+        }
+    }
+}
+
 impl<'x, T> From<Vec<T>> for URL<'x>
 where
     T: Into<Cow<'x, str>>,

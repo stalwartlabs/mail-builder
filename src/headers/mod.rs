@@ -28,6 +28,7 @@ pub trait Header {
     fn write_header(&self, output: impl Write, bytes_written: usize) -> io::Result<usize>;
 }
 
+#[derive(Debug)]
 pub enum HeaderType<'x> {
     Address(Address<'x>),
     Date(Date),

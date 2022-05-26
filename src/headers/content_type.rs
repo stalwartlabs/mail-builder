@@ -16,6 +16,7 @@ use crate::encoders::encode::rfc2047_encode;
 use super::Header;
 
 /// MIME Content-Type or Content-Disposition header
+#[derive(Debug)]
 pub struct ContentType<'x> {
     pub c_type: Cow<'x, str>,
     pub attributes: BTreeMap<Cow<'x, str>, Cow<'x, str>>,

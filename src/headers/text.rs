@@ -20,6 +20,7 @@ use crate::encoders::{
 use super::Header;
 
 /// Unstructured text e-mail header.
+#[derive(Debug)]
 pub struct Text<'x> {
     pub text: Cow<'x, str>,
 }

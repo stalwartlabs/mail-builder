@@ -222,7 +222,8 @@ use headers::{
 };
 use mime::{make_boundary, MimePart};
 
-/// Builds a RFC5322 compliant MIME email message.
+/// Builds an RFC5322 compliant MIME email message.
+#[derive(Debug)]
 pub struct MessageBuilder<'x> {
     pub headers: BTreeMap<Cow<'x, str>, Vec<HeaderType<'x>>>,
     pub html_body: Option<MimePart<'x>>,

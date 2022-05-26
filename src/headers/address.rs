@@ -16,18 +16,21 @@ use crate::encoders::encode::rfc2047_encode;
 use super::Header;
 
 /// RFC5322 e-mail address
+#[derive(Debug)]
 pub struct EmailAddress<'x> {
     pub name: Option<Cow<'x, str>>,
     pub email: Cow<'x, str>,
 }
 
 /// RFC5322 grouped e-mail addresses
+#[derive(Debug)]
 pub struct GroupedAddresses<'x> {
     pub name: Option<Cow<'x, str>>,
     pub addresses: Vec<Address<'x>>,
 }
 
 /// RFC5322 address
+#[derive(Debug)]
 pub enum Address<'x> {
     Address(EmailAddress<'x>),
     Group(GroupedAddresses<'x>),
@@ -109,21 +112,6 @@ where
 {
     fn from(value: Vec<T>) -> Self {
         Address::new_list(value.into_iter().map(|x| x.into()).collect())
-    }
-}
-
-impl<'x, T> From<&'x T> for Address<'x> {
-    fn from(s: &'x T) -> Self {
-        s.into()
-    }
-}
-
-impl<'x, T> From<&'x [T]> for Address<'x>
-where
-    T: Into<Address<'x>>,
-{
-    fn from(value: &'x [T]) -> Self {
-        Address::new_list(value.iter().map(|x| x.into()).collect())
     }
 }
 

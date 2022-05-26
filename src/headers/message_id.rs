@@ -14,6 +14,7 @@ use std::borrow::Cow;
 use super::Header;
 
 /// RFC5322 Message ID header
+#[derive(Debug)]
 pub struct MessageId<'x> {
     pub id: Vec<Cow<'x, str>>,
 }

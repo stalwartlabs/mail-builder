@@ -12,6 +12,8 @@ _mail-builder_ is a flexible **e-mail builder library** written in Rust. It incl
 - **Fast Base64 encoding** based on Chromium's decoder ([the fastest non-SIMD encoder](https://github.com/lemire/fastbase64)).
 - Minimal dependencies.
 
+Please note that this library does not support sending or parsing e-mail messages as these functionalities are provided by the crates [`mail-send`](https://crates.io/crates/mail-send) and [`mail-parser`](https://crates.io/crates/mail-parser).
+
 ## Usage Example
 
 Build a simple e-mail message with a text body and one attachment:
@@ -157,9 +159,6 @@ Nested MIME body structures can be created using the `body` method:
         .write_to(File::create("nested-message.eml").unwrap())
         .unwrap();
 ```
-
-Please note that this library does not support parsing e-mail messages as this functionality is provided separately by the [`mail-parser`](https://crates.io/crates/mail-parser) crate.
-
 
 ## Testing
 

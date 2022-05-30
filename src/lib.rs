@@ -16,10 +16,16 @@
 //! [![docs.rs](https://img.shields.io/docsrs/mail-builder)](https://docs.rs/mail-builder)
 //! [![crates.io](https://img.shields.io/crates/l/mail-builder)](http://www.apache.org/licenses/LICENSE-2.0)
 //!
-//! _mail-builder_ is a flexible **e-mail builder library** written in Rust that generates RFC5322 compliant e-mail messages.
-//! The library has full MIME support and automatically selects the most optimal encoding for each message body part.
+//! _mail-builder_ is a flexible **e-mail builder library** written in Rust. It includes the following features:
 //!
-//! Building e-mail messages is straightforward:
+//! - Generates **e-mail** messages conforming to the Internet Message Format standard (_RFC 5322_).
+//! - Full **MIME** support (_RFC 2045 - 2049_) with automatic selection of the most optimal encoding for each message body part.
+//! - **Fast Base64 encoding** based on Chromium's decoder ([the fastest non-SIMD encoder](https://github.com/lemire/fastbase64)).
+//! - Minimal dependencies.
+//!
+//! ## Usage Example
+//!
+//! Build a simple e-mail message with a text body and one attachment:
 //!
 //! ```rust
 //!     use mail_builder::MessageBuilder;

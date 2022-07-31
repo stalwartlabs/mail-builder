@@ -12,10 +12,9 @@
 use std::{
     borrow::Cow,
     cell::Cell,
-    collections::{btree_map::Entry, hash_map::DefaultHasher, BTreeMap},
+    collections::hash_map::DefaultHasher,
     hash::{Hash, Hasher},
     io::{self, Write},
-    iter::FromIterator,
     thread,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
@@ -34,7 +33,7 @@ use crate::{
 /// MIME part of an e-mail.
 #[derive(Debug)]
 pub struct MimePart<'x> {
-    pub headers: BTreeMap<Cow<'x, str>, HeaderType<'x>>,
+    pub headers: Vec<(Cow<'x, str>, HeaderType<'x>)>,
     pub contents: BodyPart<'x>,
 }
 
@@ -96,7 +95,7 @@ impl<'x> MimePart<'x> {
     pub fn new(content_type: ContentType<'x>, contents: BodyPart<'x>) -> Self {
         Self {
             contents,
-            headers: BTreeMap::from_iter(vec![("Content-Type".into(), content_type.into())]),
+            headers: vec![("Content-Type".into(), content_type.into())],
         }
     }
 
@@ -107,10 +106,7 @@ impl<'x> MimePart<'x> {
     ) -> Self {
         Self {
             contents: BodyPart::Multipart(contents),
-            headers: BTreeMap::from_iter(vec![(
-                "Content-Type".into(),
-                ContentType::new(content_type).into(),
-            )]),
+            headers: vec![("Content-Type".into(), ContentType::new(content_type).into())],
         }
     }
 
@@ -118,12 +114,12 @@ impl<'x> MimePart<'x> {
     pub fn new_text(contents: impl Into<Cow<'x, str>>) -> Self {
         Self {
             contents: BodyPart::Text(contents.into()),
-            headers: BTreeMap::from_iter(vec![(
+            headers: vec![(
                 "Content-Type".into(),
                 ContentType::new("text/plain")
                     .attribute("charset", "utf-8")
                     .into(),
-            )]),
+            )],
         }
     }
 
@@ -134,12 +130,12 @@ impl<'x> MimePart<'x> {
     ) -> Self {
         Self {
             contents: BodyPart::Text(contents.into()),
-            headers: BTreeMap::from_iter(vec![(
+            headers: vec![(
                 "Content-Type".into(),
                 ContentType::new(content_type)
                     .attribute("charset", "utf-8")
                     .into(),
-            )]),
+            )],
         }
     }
 
@@ -147,12 +143,12 @@ impl<'x> MimePart<'x> {
     pub fn new_html(contents: impl Into<Cow<'x, str>>) -> Self {
         Self {
             contents: BodyPart::Text(contents.into()),
-            headers: BTreeMap::from_iter(vec![(
+            headers: vec![(
                 "Content-Type".into(),
                 ContentType::new("text/html")
                     .attribute("charset", "utf-8")
                     .into(),
-            )]),
+            )],
         }
     }
 
@@ -160,51 +156,48 @@ impl<'x> MimePart<'x> {
     pub fn new_binary(c_type: impl Into<Cow<'x, str>>, contents: impl Into<Cow<'x, [u8]>>) -> Self {
         Self {
             contents: BodyPart::Binary(contents.into()),
-            headers: BTreeMap::from_iter(vec![(
-                "Content-Type".into(),
-                ContentType::new(c_type).into(),
-            )]),
+            headers: vec![("Content-Type".into(), ContentType::new(c_type).into())],
         }
     }
 
     /// Set the attachment filename of a MIME part.
     pub fn attachment(mut self, filename: impl Into<Cow<'x, str>>) -> Self {
-        self.headers.insert(
+        self.headers.push((
             "Content-Disposition".into(),
             ContentType::new("attachment")
                 .attribute("filename", filename)
                 .into(),
-        );
+        ));
         self
     }
 
     /// Set the MIME part as inline.
     pub fn inline(mut self) -> Self {
-        self.headers.insert(
+        self.headers.push((
             "Content-Disposition".into(),
             ContentType::new("inline").into(),
-        );
+        ));
         self
     }
 
     /// Set the Content-Language header of a MIME part.
     pub fn language(mut self, value: impl Into<Cow<'x, str>>) -> Self {
         self.headers
-            .insert("Content-Language".into(), Text::new(value).into());
+            .push(("Content-Language".into(), Text::new(value).into()));
         self
     }
 
     /// Set the Content-ID header of a MIME part.
     pub fn cid(mut self, value: impl Into<Cow<'x, str>>) -> Self {
         self.headers
-            .insert("Content-ID".into(), MessageId::new(value).into());
+            .push(("Content-ID".into(), MessageId::new(value).into()));
         self
     }
 
     /// Set the Content-Location header of a MIME part.
     pub fn location(mut self, value: impl Into<Cow<'x, str>>) -> Self {
         self.headers
-            .insert("Content-Location".into(), Raw::new(value).into());
+            .push(("Content-Location".into(), Raw::new(value).into()));
         self
     }
 
@@ -214,7 +207,7 @@ impl<'x> MimePart<'x> {
         header: impl Into<Cow<'x, str>>,
         value: impl Into<HeaderType<'x>>,
     ) -> Self {
-        self.headers.insert(header.into(), value.into());
+        self.headers.push((header.into(), value.into()));
         self
     }
 
@@ -232,7 +225,7 @@ impl<'x> MimePart<'x> {
         let mut boundary: Option<Cow<str>> = None;
 
         loop {
-            while let Some(mut part) = it.next() {
+            while let Some(part) = it.next() {
                 if let Some(boundary) = boundary.as_ref() {
                     output.write_all(b"\r\n--")?;
                     output.write_all(boundary.as_bytes())?;
@@ -282,52 +275,66 @@ impl<'x> MimePart<'x> {
                     }
                     BodyPart::Multipart(parts) => {
                         if boundary.is_some() {
-                            stack.push((it, boundary));
+                            stack.push((it, boundary.take()));
                         }
 
-                        output.write_all(b"Content-Type: ")?;
-                        boundary = if let Some(value) = part.headers.remove("Content-Type") {
-                            match value {
-                                HeaderType::ContentType(mut ct) => {
-                                    if let Entry::Vacant(entry) =
-                                        ct.attributes.entry("boundary".into())
-                                    {
-                                        entry.insert(make_boundary().into());
-                                    }
-                                    ct.write_header(&mut output, 14)?;
-                                    ct.attributes.remove("boundary")
-                                }
-                                HeaderType::Raw(raw) => {
-                                    if let Some(pos) = raw.raw.find("boundary=\"") {
-                                        if let Some(boundary) = raw.raw[pos..].split('"').nth(1) {
-                                            Some(boundary.to_string().into())
-                                        } else {
-                                            Some(make_boundary().into())
-                                        }
-                                    } else {
-                                        let boundary = make_boundary();
-                                        output.write_all(raw.raw.as_bytes())?;
-                                        output.write_all(b"; boundary=\"")?;
-                                        output.write_all(boundary.as_bytes())?;
-                                        output.write_all(b"\"\r\n")?;
-                                        Some(boundary.into())
-                                    }
-                                }
-                                _ => panic!("Unsupported Content-Type header value."),
-                            }
-                        } else {
-                            let boundary = make_boundary();
-                            ContentType::new("multipart/mixed")
-                                .attribute("boundary", &boundary)
-                                .write_header(&mut output, 14)?;
-                            Some(boundary.into())
-                        };
-
+                        let mut found_ct = false;
                         for (header_name, header_value) in part.headers {
                             output.write_all(header_name.as_bytes())?;
                             output.write_all(b": ")?;
-                            header_value.write_header(&mut output, header_name.len() + 2)?;
+
+                            if !found_ct && header_name.eq_ignore_ascii_case("Content-Type") {
+                                boundary = match header_value {
+                                    HeaderType::ContentType(mut ct) => {
+                                        let bpos = if let Some(pos) = ct
+                                            .attributes
+                                            .iter()
+                                            .position(|(a, _)| a.eq_ignore_ascii_case("boundary"))
+                                        {
+                                            pos
+                                        } else {
+                                            let pos = ct.attributes.len();
+                                            ct.attributes
+                                                .push(("boundary".into(), make_boundary().into()));
+                                            pos
+                                        };
+                                        ct.write_header(&mut output, 14)?;
+                                        ct.attributes.swap_remove(bpos).1.into()
+                                    }
+                                    HeaderType::Raw(raw) => {
+                                        if let Some(pos) = raw.raw.find("boundary=\"") {
+                                            if let Some(boundary) = raw.raw[pos..].split('"').nth(1)
+                                            {
+                                                Some(boundary.to_string().into())
+                                            } else {
+                                                Some(make_boundary().into())
+                                            }
+                                        } else {
+                                            let boundary = make_boundary();
+                                            output.write_all(raw.raw.as_bytes())?;
+                                            output.write_all(b"; boundary=\"")?;
+                                            output.write_all(boundary.as_bytes())?;
+                                            output.write_all(b"\"\r\n")?;
+                                            Some(boundary.into())
+                                        }
+                                    }
+                                    _ => panic!("Unsupported Content-Type header value."),
+                                };
+                                found_ct = true;
+                            } else {
+                                header_value.write_header(&mut output, header_name.len() + 2)?;
+                            }
                         }
+
+                        if !found_ct {
+                            output.write_all(b"Content-Type: ")?;
+                            let boundary_ = make_boundary();
+                            ContentType::new("multipart/mixed")
+                                .attribute("boundary", &boundary_)
+                                .write_header(&mut output, 14)?;
+                            boundary = Some(boundary_.into());
+                        }
+
                         output.write_all(b"\r\n")?;
                         it = parts.into_iter();
                     }

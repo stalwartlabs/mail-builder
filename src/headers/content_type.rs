@@ -9,7 +9,7 @@
  * except according to those terms.
  */
 
-use std::{borrow::Cow, collections::BTreeMap};
+use std::borrow::Cow;
 
 use crate::encoders::encode::rfc2047_encode;
 
@@ -19,7 +19,7 @@ use super::Header;
 #[derive(Debug)]
 pub struct ContentType<'x> {
     pub c_type: Cow<'x, str>,
-    pub attributes: BTreeMap<Cow<'x, str>, Cow<'x, str>>,
+    pub attributes: Vec<(Cow<'x, str>, Cow<'x, str>)>,
 }
 
 impl<'x> ContentType<'x> {
@@ -27,7 +27,7 @@ impl<'x> ContentType<'x> {
     pub fn new(c_type: impl Into<Cow<'x, str>>) -> Self {
         Self {
             c_type: c_type.into(),
-            attributes: BTreeMap::new(),
+            attributes: Vec::new(),
         }
     }
 
@@ -37,7 +37,7 @@ impl<'x> ContentType<'x> {
         key: impl Into<Cow<'x, str>>,
         value: impl Into<Cow<'x, str>>,
     ) -> Self {
-        self.attributes.insert(key.into(), value.into());
+        self.attributes.push((key.into(), value.into()));
         self
     }
 

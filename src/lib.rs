@@ -217,7 +217,6 @@ pub mod mime;
 
 use std::{
     borrow::Cow,
-    collections::BTreeMap,
     io::{self, Write},
 };
 
@@ -230,7 +229,7 @@ use mime::{make_boundary, MimePart};
 /// Builds an RFC5322 compliant MIME email message.
 #[derive(Debug)]
 pub struct MessageBuilder<'x> {
-    pub headers: BTreeMap<Cow<'x, str>, Vec<HeaderType<'x>>>,
+    pub headers: Vec<(Cow<'x, str>, HeaderType<'x>)>,
     pub html_body: Option<MimePart<'x>>,
     pub text_body: Option<MimePart<'x>>,
     pub attachments: Option<Vec<MimePart<'x>>>,
@@ -247,7 +246,7 @@ impl<'x> MessageBuilder<'x> {
     /// Create a new MessageBuilder.
     pub fn new() -> Self {
         MessageBuilder {
-            headers: BTreeMap::new(),
+            headers: Vec::new(),
             html_body: None,
             text_body: None,
             attachments: None,
@@ -318,10 +317,7 @@ impl<'x> MessageBuilder<'x> {
         header: impl Into<Cow<'x, str>>,
         value: impl Into<HeaderType<'x>>,
     ) -> Self {
-        self.headers
-            .entry(header.into())
-            .or_insert_with(Vec::new)
-            .push(value.into());
+        self.headers.push((header.into(), value.into()));
         self
     }
 
@@ -332,10 +328,12 @@ impl<'x> MessageBuilder<'x> {
         U: IntoIterator<Item = V>,
         V: Into<HeaderType<'x>>,
     {
-        self.headers.insert(
-            header.into(),
-            values.into_iter().map(|v| v.into()).collect(),
-        );
+        let header = header.into();
+
+        for value in values {
+            self.headers.push((header.clone(), value.into()));
+        }
+
         self
     }
 
@@ -405,18 +403,16 @@ impl<'x> MessageBuilder<'x> {
         let mut has_date = false;
         let mut has_message_id = false;
 
-        for (header_name, header_values) in &self.headers {
+        for (header_name, header_value) in &self.headers {
             if !has_date && header_name == "Date" {
                 has_date = true;
             } else if !has_message_id && header_name == "Message-ID" {
                 has_message_id = true;
             }
 
-            for header_value in header_values {
-                output.write_all(header_name.as_bytes())?;
-                output.write_all(b": ")?;
-                header_value.write_header(&mut output, header_name.len() + 2)?;
-            }
+            output.write_all(header_name.as_bytes())?;
+            output.write_all(b": ")?;
+            header_value.write_header(&mut output, header_name.len() + 2)?;
         }
 
         if !has_message_id {

@@ -96,8 +96,13 @@ impl<'x> Header for URL<'x> {
             }
             output.write_all(b"<")?;
             output.write_all(url.as_bytes())?;
-            output.write_all(b">")?;
-            bytes_written += url.len() + 2;
+            if pos < self.url.len() - 1 {
+                output.write_all(b">,")?;
+                bytes_written += url.len() + 3;
+            } else {
+                output.write_all(b">")?;
+                bytes_written += url.len() + 2;
+            }
         }
 
         if bytes_written > 0 {

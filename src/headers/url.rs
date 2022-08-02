@@ -14,7 +14,7 @@ use std::borrow::Cow;
 use super::Header;
 
 /// URL header, used mostly on List-* headers
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct URL<'x> {
     pub url: Vec<Cow<'x, str>>,
 }

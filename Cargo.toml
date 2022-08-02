@@ -1,7 +1,7 @@
 [package]
 name = "mail-builder"
 description = "E-mail builder library for Rust"
-version = "0.2.0"
+version = "0.2.1"
 edition = "2018"
 authors = [ "Stalwart Labs <hello@stalw.art>"]
 license = "Apache-2.0 OR MIT"
@@ -16,7 +16,7 @@ gethostname = "0.2.2"
 chrono = "0.4"
 
 [dev-dependencies]
-mail-parser = "0.4.3"
+mail-parser = "0.5.0"
 serde = { version = "1.0", features = ["derive"]}
 serde_yaml = "0.8"
 serde_json = "1.0"

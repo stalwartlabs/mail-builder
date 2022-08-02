@@ -16,7 +16,7 @@ use chrono::{DateTime, LocalResult, TimeZone, Utc};
 use super::Header;
 
 /// RFC5322 Date header
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Date {
     pub date: i64,
 }

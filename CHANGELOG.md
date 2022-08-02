@@ -1,3 +1,8 @@
+mail-builder 0.2.1
+================================
+- Fixed URL serializing bug.
+- Headers are stored in a `Vec` instead of `BTreeMap`.
+
 mail-builder 0.2.0
 ================================
 - Improved API

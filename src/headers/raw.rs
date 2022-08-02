@@ -15,7 +15,7 @@ use super::Header;
 
 /// Raw e-mail header.
 /// Raw headers are not encoded, only line-wrapped.
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Raw<'x> {
     pub raw: Cow<'x, str>,
 }

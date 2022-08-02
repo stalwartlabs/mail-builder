@@ -16,7 +16,7 @@ use crate::encoders::encode::rfc2047_encode;
 use super::Header;
 
 /// MIME Content-Type or Content-Disposition header
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct ContentType<'x> {
     pub c_type: Cow<'x, str>,
     pub attributes: Vec<(Cow<'x, str>, Cow<'x, str>)>,

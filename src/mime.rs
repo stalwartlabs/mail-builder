@@ -211,6 +211,15 @@ impl<'x> MimePart<'x> {
         self
     }
 
+    /// Returns the part's size
+    pub fn size(&self) -> usize {
+        match &self.contents {
+            BodyPart::Text(b) => b.len(),
+            BodyPart::Binary(b) => b.len(),
+            BodyPart::Multipart(bl) => bl.iter().map(|b| b.size()).sum(),
+        }
+    }
+
     /// Add a body part to a multipart/* MIME part.
     pub fn add_part(&mut self, part: MimePart<'x>) {
         if let BodyPart::Multipart(ref mut parts) = self.contents {

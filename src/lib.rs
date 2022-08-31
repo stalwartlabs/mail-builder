@@ -417,7 +417,14 @@ impl<'x> MessageBuilder<'x> {
 
         if !has_message_id {
             output.write_all(b"Message-ID: <")?;
-            output.write_all(make_boundary().as_bytes())?;
+            output.write_all(make_boundary(".").as_bytes())?;
+            output.write_all(b"@")?;
+            output.write_all(
+                gethostname::gethostname()
+                    .to_str()
+                    .unwrap_or("localhost")
+                    .as_bytes(),
+            )?;
             output.write_all(b">\r\n")?;
         }
 

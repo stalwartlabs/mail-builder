@@ -70,22 +70,24 @@ impl<'x> From<Vec<u8>> for BodyPart<'x> {
 
 thread_local!(static COUNTER: Cell<u64> = Cell::new(0));
 
-pub fn make_boundary() -> String {
+pub fn make_boundary(separator: &str) -> String {
     let mut s = DefaultHasher::new();
     gethostname::gethostname().hash(&mut s);
     thread::current().id().hash(&mut s);
     let hash = s.finish();
 
     format!(
-        "{:x}_{:x}_{:x}",
+        "{:x}{}{:x}{}{:x}",
         SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap_or_else(|_| Duration::new(0, 0))
             .as_nanos(),
+        separator,
         COUNTER.with(|c| {
             hash.wrapping_add(c.replace(c.get() + 1))
                 .wrapping_mul(11400714819323198485u64)
         }),
+        separator,
         hash,
     )
 }
@@ -303,8 +305,10 @@ impl<'x> MimePart<'x> {
                                             pos
                                         } else {
                                             let pos = ct.attributes.len();
-                                            ct.attributes
-                                                .push(("boundary".into(), make_boundary().into()));
+                                            ct.attributes.push((
+                                                "boundary".into(),
+                                                make_boundary("_").into(),
+                                            ));
                                             pos
                                         };
                                         ct.write_header(&mut output, 14)?;
@@ -316,10 +320,10 @@ impl<'x> MimePart<'x> {
                                             {
                                                 Some(boundary.to_string().into())
                                             } else {
-                                                Some(make_boundary().into())
+                                                Some(make_boundary("_").into())
                                             }
                                         } else {
-                                            let boundary = make_boundary();
+                                            let boundary = make_boundary("_");
                                             output.write_all(raw.raw.as_bytes())?;
                                             output.write_all(b"; boundary=\"")?;
                                             output.write_all(boundary.as_bytes())?;
@@ -337,7 +341,7 @@ impl<'x> MimePart<'x> {
 
                         if !found_ct {
                             output.write_all(b"Content-Type: ")?;
-                            let boundary_ = make_boundary();
+                            let boundary_ = make_boundary("_");
                             ContentType::new("multipart/mixed")
                                 .attribute("boundary", &boundary_)
                                 .write_header(&mut output, 14)?;

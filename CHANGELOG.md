@@ -1,3 +1,7 @@
+mail-builder 0.2.2
+================================
+- Fix: Generate valid Message-IDs
+
 mail-builder 0.2.1
 ================================
 - Fixed URL serializing bug.

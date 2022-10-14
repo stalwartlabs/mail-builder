@@ -47,6 +47,10 @@ impl From<&DateTime<Utc>> for Date {
     }
 }
 
+pub fn generate_date_header(mut output: impl std::io::Write) -> std::io::Result<()> {
+    output.write_all(chrono::Local::now().to_rfc2822().as_bytes())
+}
+
 impl Header for Date {
     fn write_header(&self, mut output: impl Write, _bytes_written: usize) -> io::Result<usize> {
         if let LocalResult::Single(dt) = Utc.timestamp_opt(self.date, 0) {

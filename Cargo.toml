@@ -12,7 +12,7 @@ categories = ["email"]
 readme = "README.md"
 
 [dependencies]
-gethostname = "0.2.2"
+gethostname = "0.3.0"
 chrono = "0.4"
 
 [dev-dependencies]

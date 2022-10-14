@@ -11,6 +11,8 @@
 
 use std::borrow::Cow;
 
+use crate::mime::make_boundary;
+
 use super::Header;
 
 /// RFC5322 Message ID header
@@ -76,6 +78,19 @@ where
             id: value.into_iter().map(|s| s.into()).collect(),
         }
     }
+}
+
+pub fn generate_message_id_header(mut output: impl std::io::Write) -> std::io::Result<()> {
+    output.write_all(b"<")?;
+    output.write_all(make_boundary(".").as_bytes())?;
+    output.write_all(b"@")?;
+    output.write_all(
+        gethostname::gethostname()
+            .to_str()
+            .unwrap_or("localhost")
+            .as_bytes(),
+    )?;
+    output.write_all(b">")
 }
 
 impl<'x> Header for MessageId<'x> {

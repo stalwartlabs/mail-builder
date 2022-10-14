@@ -220,11 +220,14 @@ use std::{
     io::{self, Write},
 };
 
-use chrono::Local;
 use headers::{
-    address::Address, date::Date, message_id::MessageId, text::Text, Header, HeaderType,
+    address::Address,
+    date::{generate_date_header, Date},
+    message_id::{generate_message_id_header, MessageId},
+    text::Text,
+    Header, HeaderType,
 };
-use mime::{make_boundary, MimePart};
+use mime::MimePart;
 
 /// Builds an RFC5322 compliant MIME email message.
 #[derive(Debug)]
@@ -416,21 +419,14 @@ impl<'x> MessageBuilder<'x> {
         }
 
         if !has_message_id {
-            output.write_all(b"Message-ID: <")?;
-            output.write_all(make_boundary(".").as_bytes())?;
-            output.write_all(b"@")?;
-            output.write_all(
-                gethostname::gethostname()
-                    .to_str()
-                    .unwrap_or("localhost")
-                    .as_bytes(),
-            )?;
-            output.write_all(b">\r\n")?;
+            output.write_all(b"Message-ID: ")?;
+            generate_message_id_header(&mut output)?;
+            output.write_all(b"\r\n")?;
         }
 
         if !has_date {
             output.write_all(b"Date: ")?;
-            output.write_all(Local::now().to_rfc2822().as_bytes())?;
+            generate_date_header(&mut output)?;
             output.write_all(b"\r\n")?;
         }
 

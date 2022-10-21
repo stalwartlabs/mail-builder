@@ -222,7 +222,7 @@ use std::{
 
 use headers::{
     address::Address,
-    date::{generate_date_header, Date},
+    date::Date,
     message_id::{generate_message_id_header, MessageId},
     text::Text,
     Header, HeaderType,
@@ -426,7 +426,7 @@ impl<'x> MessageBuilder<'x> {
 
         if !has_date {
             output.write_all(b"Date: ")?;
-            generate_date_header(&mut output)?;
+            output.write_all(Date::now().to_rfc822().as_bytes())?;
             output.write_all(b"\r\n")?;
         }
 

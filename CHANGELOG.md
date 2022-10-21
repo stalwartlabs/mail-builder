@@ -1,3 +1,7 @@
+mail-builder 0.2.3
+================================
+- Removed chrono dependency.
+
 mail-builder 0.2.2
 ================================
 - Fix: Generate valid Message-IDs

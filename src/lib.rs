@@ -210,7 +210,6 @@
 //!
 //! [COPYING]: https://github.com/stalwartlabs/mail-builder/blob/main/COPYING
 //!
-#[forbid(unsafe_code)]
 pub mod encoders;
 pub mod headers;
 pub mod mime;
@@ -430,6 +429,11 @@ impl<'x> MessageBuilder<'x> {
             output.write_all(b"\r\n")?;
         }
 
+        self.write_body(output)
+    }
+
+    /// Write the message body without headers.
+    pub fn write_body(self, output: impl Write) -> io::Result<()> {
         (if let Some(body) = self.body {
             body
         } else {

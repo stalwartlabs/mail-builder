@@ -11,11 +11,15 @@ keywords = ["email", "mime", "mail", "e-mail"]
 categories = ["email"]
 readme = "README.md"
 
+[features]
+default = []
+ludicrous_mode = []
+
 [dependencies]
 gethostname = "0.3.0"
 
 [dev-dependencies]
-mail-parser = "0.6.0"
+mail-parser = "0.7"
 serde = { version = "1.0", features = ["derive"]}
 serde_yaml = "0.9.10"
 serde_json = "1.0"

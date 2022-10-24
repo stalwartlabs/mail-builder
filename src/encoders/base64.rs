@@ -13,7 +13,17 @@ use std::io::{self, Write};
 
 const CHARPAD: u8 = b'=';
 
-pub fn base64_encode(input: &[u8], mut output: impl Write, is_inline: bool) -> io::Result<usize> {
+pub fn base64_encode(input: &[u8]) -> io::Result<Vec<u8>> {
+    let mut buf = Vec::with_capacity(4 * (input.len() / 3));
+    base64_encode_mime(input, &mut buf, true)?;
+    Ok(buf)
+}
+
+pub fn base64_encode_mime(
+    input: &[u8],
+    mut output: impl Write,
+    is_inline: bool,
+) -> io::Result<usize> {
     let mut i = 0;
     let mut t1;
     let mut t2;
@@ -22,16 +32,33 @@ pub fn base64_encode(input: &[u8], mut output: impl Write, is_inline: bool) -> i
 
     if input.len() > 2 {
         while i < input.len() - 2 {
-            t1 = input[i];
-            t2 = input[i + 1];
-            t3 = input[i + 2];
+            #[cfg(not(feature = "ludicrous_mode"))]
+            {
+                t1 = input[i];
+                t2 = input[i + 1];
+                t3 = input[i + 2];
 
-            output.write_all(&[
-                E0[t1 as usize],
-                E1[(((t1 & 0x03) << 4) | ((t2 >> 4) & 0x0F)) as usize],
-                E1[(((t2 & 0x0F) << 2) | ((t3 >> 6) & 0x03)) as usize],
-                E2[t3 as usize],
-            ])?;
+                output.write_all(&[
+                    E0[t1 as usize],
+                    E1[(((t1 & 0x03) << 4) | ((t2 >> 4) & 0x0F)) as usize],
+                    E1[(((t2 & 0x0F) << 2) | ((t3 >> 6) & 0x03)) as usize],
+                    E2[t3 as usize],
+                ])?;
+            }
+
+            #[cfg(feature = "ludicrous_mode")]
+            unsafe {
+                t1 = *input.get_unchecked(i);
+                t2 = *input.get_unchecked(i + 1);
+                t3 = *input.get_unchecked(i + 2);
+
+                output.write_all(&[
+                    *E0.get_unchecked(t1 as usize),
+                    *E1.get_unchecked((((t1 & 0x03) << 4) | ((t2 >> 4) & 0x0F)) as usize),
+                    *E1.get_unchecked((((t2 & 0x0F) << 2) | ((t3 >> 6) & 0x03)) as usize),
+                    *E2.get_unchecked(t3 as usize),
+                ])?;
+            }
 
             bytes_written += 4;
 
@@ -45,22 +72,46 @@ pub fn base64_encode(input: &[u8], mut output: impl Write, is_inline: bool) -> i
 
     let remaining = input.len() - i;
     if remaining > 0 {
-        t1 = input[i];
-        if remaining == 1 {
-            output.write_all(&[
-                E0[t1 as usize],
-                E1[((t1 & 0x03) << 4) as usize],
-                CHARPAD,
-                CHARPAD,
-            ])?;
-        } else {
-            t2 = input[i + 1];
-            output.write_all(&[
-                E0[t1 as usize],
-                E1[(((t1 & 0x03) << 4) | ((t2 >> 4) & 0x0F)) as usize],
-                E2[((t2 & 0x0F) << 2) as usize],
-                CHARPAD,
-            ])?;
+        #[cfg(not(feature = "ludicrous_mode"))]
+        {
+            t1 = input[i];
+            if remaining == 1 {
+                output.write_all(&[
+                    E0[t1 as usize],
+                    E1[((t1 & 0x03) << 4) as usize],
+                    CHARPAD,
+                    CHARPAD,
+                ])?;
+            } else {
+                t2 = input[i + 1];
+                output.write_all(&[
+                    E0[t1 as usize],
+                    E1[(((t1 & 0x03) << 4) | ((t2 >> 4) & 0x0F)) as usize],
+                    E2[((t2 & 0x0F) << 2) as usize],
+                    CHARPAD,
+                ])?;
+            }
+        }
+
+        #[cfg(feature = "ludicrous_mode")]
+        unsafe {
+            t1 = *input.get_unchecked(i);
+            if remaining == 1 {
+                output.write_all(&[
+                    *E0.get_unchecked(t1 as usize),
+                    *E1.get_unchecked(((t1 & 0x03) << 4) as usize),
+                    CHARPAD,
+                    CHARPAD,
+                ])?;
+            } else {
+                t2 = *input.get_unchecked(i + 1);
+                output.write_all(&[
+                    *E0.get_unchecked(t1 as usize),
+                    *E1.get_unchecked((((t1 & 0x03) << 4) | ((t2 >> 4) & 0x0F)) as usize),
+                    *E2.get_unchecked(((t2 & 0x0F) << 2) as usize),
+                    CHARPAD,
+                ])?;
+            }
         }
 
         bytes_written += 4;
@@ -110,7 +161,7 @@ mod tests {
             ),
         ] {
             let mut output = Vec::new();
-            super::base64_encode(input.as_bytes(), &mut output, is_inline).unwrap();
+            super::base64_encode_mime(input.as_bytes(), &mut output, is_inline).unwrap();
             assert_eq!(std::str::from_utf8(&output).unwrap(), expected_result);
         }
     }

@@ -11,7 +11,7 @@
 
 use std::io::{self, Write};
 
-use super::{base64::base64_encode, quoted_printable::quoted_printable_encode};
+use super::{base64::base64_encode_mime, quoted_printable::quoted_printable_encode};
 
 pub enum EncodingType {
     Base64,
@@ -84,7 +84,7 @@ pub fn rfc2047_encode(input: &str, mut output: impl Write) -> io::Result<usize> 
     Ok(match get_encoding_type(input.as_bytes(), true, false) {
         EncodingType::Base64 => {
             output.write_all(b"\"=?utf-8?B?")?;
-            let bytes_written = base64_encode(input.as_bytes(), &mut output, true)? + 14;
+            let bytes_written = base64_encode_mime(input.as_bytes(), &mut output, true)? + 14;
             output.write_all(b"?=\"")?;
             bytes_written
         }

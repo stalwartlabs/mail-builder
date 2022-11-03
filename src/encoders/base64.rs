@@ -13,6 +13,7 @@ use std::io::{self, Write};
 
 const CHARPAD: u8 = b'=';
 
+#[inline(always)]
 pub fn base64_encode(input: &[u8]) -> io::Result<Vec<u8>> {
     let mut buf = Vec::with_capacity(4 * (input.len() / 3));
     base64_encode_mime(input, &mut buf, true)?;

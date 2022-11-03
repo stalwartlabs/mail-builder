@@ -1,7 +1,7 @@
 [package]
 name = "mail-builder"
 description = "E-mail builder library for Rust"
-version = "0.2.3"
+version = "0.2.4"
 edition = "2018"
 authors = [ "Stalwart Labs <hello@stalw.art>"]
 license = "Apache-2.0 OR MIT"
@@ -16,7 +16,7 @@ default = []
 ludicrous_mode = []
 
 [dependencies]
-gethostname = "0.3.0"
+gethostname = "0.4.0"
 
 [dev-dependencies]
 mail-parser = "0.7"

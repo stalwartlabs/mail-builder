@@ -1,3 +1,7 @@
+mail-builder 0.2.4
+================================
+- Added "Ludicrous mode" unsafe option for fast encoding.
+
 mail-builder 0.2.3
 ================================
 - Removed chrono dependency.

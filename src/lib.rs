@@ -229,7 +229,7 @@ use headers::{
 use mime::MimePart;
 
 /// Builds an RFC5322 compliant MIME email message.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct MessageBuilder<'x> {
     pub headers: Vec<(Cow<'x, str>, HeaderType<'x>)>,
     pub html_body: Option<MimePart<'x>>,

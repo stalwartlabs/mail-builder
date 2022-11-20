@@ -31,13 +31,13 @@ use crate::{
 };
 
 /// MIME part of an e-mail.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct MimePart<'x> {
     pub headers: Vec<(Cow<'x, str>, HeaderType<'x>)>,
     pub contents: BodyPart<'x>,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum BodyPart<'x> {
     Text(Cow<'x, str>),
     Binary(Cow<'x, [u8]>),

@@ -62,7 +62,7 @@ impl Date {
             DOW[(((self.date as f64 / 86400.0).floor() as i64 + 4).rem_euclid(7)) as usize],
             d,
             MONTH.get(m.saturating_sub(1) as usize).unwrap_or(&""),
-            (y + (if m <= 2 { 1 } else { 0 })),
+            (y + i64::from(m <= 2)),
             h,
             mn,
             s,

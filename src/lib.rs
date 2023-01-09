@@ -419,7 +419,10 @@ impl<'x> MessageBuilder<'x> {
 
         if !has_message_id {
             output.write_all(b"Message-ID: ")?;
-            generate_message_id_header(&mut output)?;
+            generate_message_id_header(
+                &mut output,
+                gethostname::gethostname().to_str().unwrap_or("localhost"),
+            )?;
             output.write_all(b"\r\n")?;
         }
 

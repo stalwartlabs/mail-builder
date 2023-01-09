@@ -80,16 +80,14 @@ where
     }
 }
 
-pub fn generate_message_id_header(mut output: impl std::io::Write) -> std::io::Result<()> {
+pub fn generate_message_id_header(
+    mut output: impl std::io::Write,
+    hostname: &str,
+) -> std::io::Result<()> {
     output.write_all(b"<")?;
     output.write_all(make_boundary(".").as_bytes())?;
     output.write_all(b"@")?;
-    output.write_all(
-        gethostname::gethostname()
-            .to_str()
-            .unwrap_or("localhost")
-            .as_bytes(),
-    )?;
+    output.write_all(hostname.as_bytes())?;
     output.write_all(b">")
 }
 

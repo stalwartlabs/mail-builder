@@ -19,37 +19,59 @@ pub fn quoted_printable_encode(
 ) -> io::Result<usize> {
     let mut bytes_written = 0;
     if !is_inline {
-        let mut prev_ch = 0;
-        for (pos, &ch) in input.iter().enumerate() {
-            if ch == b'='
-                || ch >= 127
-                || (!is_body && (ch == b'\r' || ch == b'\n'))
-                || ((ch == b' ' || ch == b'\t')
-                    && ((is_body
-                        && matches!(input.get(pos + 1..), Some([b'\n', ..] | [b'\r', b'\n', ..])))
-                        || (pos == input.len() - 1)))
-            {
-                if bytes_written + 3 > 76 {
-                    output.write_all(b"=\r\n")?;
+        if is_body {
+            let mut prev_ch = 0;
+            for (pos, &ch) in input.iter().enumerate() {
+                if ch == b'='
+                    || ch >= 127
+                    || ((ch == b' ' || ch == b'\t')
+                        && (matches!(input.get(pos + 1..), Some([b'\n', ..] | [b'\r', b'\n', ..]))
+                            || (pos == input.len() - 1)))
+                {
+                    if bytes_written + 3 > 76 {
+                        output.write_all(b"=\r\n")?;
+                        bytes_written = 0;
+                    }
+                    output.write_all(format!("={:02X}", ch).as_bytes())?;
+                    bytes_written += 3;
+                } else if ch == b'\n' {
+                    if prev_ch != b'\r' {
+                        output.write_all(b"\r\n")?;
+                    } else {
+                        output.write_all(b"\n")?;
+                    }
                     bytes_written = 0;
+                } else {
+                    prev_ch = ch;
+                    if bytes_written + 1 > 76 {
+                        output.write_all(b"=\r\n")?;
+                        bytes_written = 0;
+                    }
+                    output.write_all(&[ch])?;
+                    bytes_written += 1;
                 }
-                output.write_all(format!("={:02X}", ch).as_bytes())?;
-                bytes_written += 3;
-            } else {
-                if is_body && ch == b'\n' && prev_ch != b'\r' {
-                    output.write_all(b"\r")?;
-                    bytes_written = 1;
-                }
-                if bytes_written + 1 > 76 {
-                    output.write_all(b"=\r\n")?;
-                    bytes_written = 0;
-                }
-                output.write_all(&[ch])?;
-                bytes_written += 1;
             }
-
-            if is_body {
-                prev_ch = ch;
+        } else {
+            for (pos, &ch) in input.iter().enumerate() {
+                if ch == b'='
+                    || ch >= 127
+                    || (ch == b'\r' || ch == b'\n')
+                    || ((ch == b' ' || ch == b'\t') && (pos == input.len() - 1))
+                {
+                    if bytes_written + 3 > 76 {
+                        output.write_all(b"=\r\n")?;
+                        bytes_written = 0;
+                    }
+                    output.write_all(format!("={:02X}", ch).as_bytes())?;
+                    bytes_written += 3;
+                } else {
+                    if bytes_written + 1 > 76 {
+                        output.write_all(b"=\r\n")?;
+                        bytes_written = 0;
+                    }
+                    output.write_all(&[ch])?;
+                    bytes_written += 1;
+                }
             }
         }
     } else {

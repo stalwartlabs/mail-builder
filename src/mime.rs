@@ -41,6 +41,7 @@ pub struct MimePart<'x> {
 pub enum BodyPart<'x> {
     Text(Cow<'x, str>),
     Binary(Cow<'x, [u8]>),
+    Message(Cow<'x, [u8]>),
     Multipart(Vec<MimePart<'x>>),
 }
 
@@ -162,6 +163,17 @@ impl<'x> MimePart<'x> {
         }
     }
 
+    /// Create a new message/rfc822 MIME part.
+    pub fn new_message(contents: impl Into<Cow<'x, [u8]>>) -> Self {
+        Self {
+            contents: BodyPart::Message(contents.into()),
+            headers: vec![(
+                "Content-Type".into(),
+                ContentType::new("message/rfc822").into(),
+            )],
+        }
+    }
+
     /// Set the attachment filename of a MIME part.
     pub fn attachment(mut self, filename: impl Into<Cow<'x, str>>) -> Self {
         self.headers.push((
@@ -218,6 +230,7 @@ impl<'x> MimePart<'x> {
         match &self.contents {
             BodyPart::Text(b) => b.len(),
             BodyPart::Binary(b) => b.len(),
+            BodyPart::Message(b) => b.len(),
             BodyPart::Multipart(bl) => bl.iter().map(|b| b.size()).sum(),
         }
     }
@@ -282,6 +295,21 @@ impl<'x> MimePart<'x> {
                             base64_encode_mime(binary.as_ref(), &mut output, false)?;
                         } else {
                             detect_encoding(binary.as_ref(), &mut output, !is_attachment)?;
+                        }
+                    }
+                    BodyPart::Message(message) => {
+                        let mut has_content_transfer_encoding = false;
+                        for (header_name, header_value) in &part.headers {
+                            output.write_all(header_name.as_bytes())?;
+                            output.write_all(b": ")?;
+                            if header_name.eq_ignore_ascii_case("Content-Transfer-Encoding") {
+                                has_content_transfer_encoding = true;
+                            }
+                            header_value.write_header(&mut output, header_name.len() + 2)?;
+                        }
+                        if !has_content_transfer_encoding {
+                            output.write_all(b"Content-Transfer-Encoding: binary\r\n\r\n")?;
+                            output.write_all(message.as_ref())?;
                         }
                     }
                     BodyPart::Multipart(parts) => {

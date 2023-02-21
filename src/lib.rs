@@ -171,6 +171,11 @@
 //!                    ],
 //!                ),
 //!                MimePart::new_text("Part K contents go here...").inline(),
+//!
+//!                // A whole RFC compliant e-mail message (including headers)
+//!                // can be attached using the MimePart::new_message method
+//!                // and by supplying the message as a bytes reference.
+//!                MimePart::new_message("Part L contents go here...".as_bytes()),
 //!            ],
 //!        ))
 //!        
@@ -564,6 +569,7 @@ mod tests {
                         ],
                     ),
                     MimePart::new_text("Part K contents go here...").inline(),
+                    MimePart::new_message("Part L contents go here...".as_bytes()),
                 ],
             ))
             .write_to_vec()

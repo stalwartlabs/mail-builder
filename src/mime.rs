@@ -348,7 +348,6 @@ impl<'x> MimePart<'x> {
                             boundary = Some(boundary_.into());
                         }
 
-                        output.write_all(b"\r\n")?;
                         it = parts.into_iter();
                     }
                 }

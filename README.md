@@ -25,7 +25,7 @@ Build a simple e-mail message with a text body and one attachment:
         .to("jane@doe.com")
         .subject("Hello, world!")
         .text_body("Message contents go here.")
-        .binary_attachment("image/png", "image.png", [1, 2, 3, 4].as_ref())
+        .attachment("image/png", "image.png", [1, 2, 3, 4].as_ref())
         .write_to_string()
         .unwrap();
         
@@ -80,11 +80,11 @@ multipart/alternative sections can also be easily built:
         .html_body("<p>HTML body with <img src=\"cid:my-image\"/>!</p>") 
 
         // Include an embedded image as an inline part
-        .binary_inline("image/png", "cid:my-image", [0, 1, 2, 3, 4, 5].as_ref())
-        .text_attachment("text/plain", "my fíle.txt", "Attachment contents go here.") 
+        .inline("image/png", "cid:my-image", [0, 1, 2, 3, 4, 5].as_ref())
+        .attachment("text/plain", "my fíle.txt", "Attachment contents go here.") 
 
         // Add text and binary attachments
-        .binary_attachment(
+        .attachment(
             "text/plain",
             "ハロー・ワールド",
             b"Binary contents go here.".as_ref(),
@@ -105,33 +105,33 @@ Nested MIME body structures can be created using the `body` method:
         .subject("Nested multipart message")
 
         // Define the nested MIME body structure
-        .body(MimePart::new_multipart(
+        .body(MimePart::new(
             "multipart/mixed",
             vec![
-                MimePart::new_text("Part A contents go here...").inline(),
-                MimePart::new_multipart(
+                MimePart::new("text/plain", "Part A contents go here...").inline(),
+                MimePart::new(
                     "multipart/mixed",
                     vec![
-                        MimePart::new_multipart(
+                        MimePart::new(
                             "multipart/alternative",
                             vec![
-                                MimePart::new_multipart(
+                                MimePart::new(
                                     "multipart/mixed",
                                     vec![
-                                        MimePart::new_text("Part B contents go here...").inline(),
-                                        MimePart::new_binary(
+                                        MimePart::new("text/plain", "Part B contents go here...").inline(),
+                                        MimePart::new(
                                             "image/jpeg",
                                             "Part C contents go here...".as_bytes(),
                                         )
                                         .inline(),
-                                        MimePart::new_text("Part D contents go here...").inline(),
+                                        MimePart::new("text/plain", "Part D contents go here...").inline(),
                                     ],
                                 ),
-                                MimePart::new_multipart(
+                                MimePart::new(
                                     "multipart/related",
                                     vec![
-                                        MimePart::new_html("Part E contents go here...").inline(),
-                                        MimePart::new_binary(
+                                        MimePart::new("text/html", "Part E contents go here...").inline(),
+                                        MimePart::new(
                                             "image/jpeg",
                                             "Part F contents go here...".as_bytes(),
                                         ),
@@ -139,19 +139,19 @@ Nested MIME body structures can be created using the `body` method:
                                 ),
                             ],
                         ),
-                        MimePart::new_binary("image/jpeg", "Part G contents go here...".as_bytes())
+                        MimePart::new("image/jpeg", "Part G contents go here...".as_bytes())
                             .attachment("image_G.jpg"),
-                        MimePart::new_binary(
+                        MimePart::new(
                             "application/x-excel",
                             "Part H contents go here...".as_bytes(),
                         ),
-                        MimePart::new_binary(
+                        MimePart::new(
                             "x-message/rfc822",
                             "Part J contents go here...".as_bytes(),
                         ),
                     ],
                 ),
-                MimePart::new_text("Part K contents go here...").inline(),
+                MimePart::new("text/plain", "Part K contents go here...").inline(),
             ],
         ))
         

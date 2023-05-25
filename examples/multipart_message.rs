@@ -49,9 +49,9 @@ fn main() {
         .header("List-Archive", URL::new("http://example.com/archive"))
         .text_body("This is the text body!\n") // Set HTML and plain text bodies
         .html_body("<p>HTML body with <img src=\"cid:my-image\"/>!</p>") // Include an embedded image as an inline part
-        .binary_inline("image/png", "cid:my-image", [0, 1, 2, 3, 4, 5].as_ref())
-        .text_attachment("text/plain", "my fíle.txt", "Attachment contents go here.") // Add a text and a binary attachment
-        .binary_attachment(
+        .inline("image/png", "cid:my-image", [0, 1, 2, 3, 4, 5].as_ref())
+        .attachment("text/plain", "my fíle.txt", "Attachment contents go here.") // Add a text and a binary attachment
+        .attachment(
             "text/plain",
             "ハロー・ワールド",
             b"Binary contents go here.".as_ref(),

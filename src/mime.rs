@@ -62,9 +62,45 @@ impl<'x> From<String> for BodyPart<'x> {
     }
 }
 
+impl<'x> From<&'x String> for BodyPart<'x> {
+    fn from(value: &'x String) -> Self {
+        BodyPart::Text(value.as_str().into())
+    }
+}
+
+impl<'x> From<Cow<'x, str>> for BodyPart<'x> {
+    fn from(value: Cow<'x, str>) -> Self {
+        BodyPart::Text(value)
+    }
+}
+
 impl<'x> From<Vec<u8>> for BodyPart<'x> {
     fn from(value: Vec<u8>) -> Self {
         BodyPart::Binary(value.into())
+    }
+}
+
+impl<'x> From<Vec<MimePart<'x>>> for BodyPart<'x> {
+    fn from(value: Vec<MimePart<'x>>) -> Self {
+        BodyPart::Multipart(value)
+    }
+}
+
+impl<'x> From<&'x str> for ContentType<'x> {
+    fn from(value: &'x str) -> Self {
+        ContentType::new(value)
+    }
+}
+
+impl<'x> From<String> for ContentType<'x> {
+    fn from(value: String) -> Self {
+        ContentType::new(value)
+    }
+}
+
+impl<'x> From<&'x String> for ContentType<'x> {
+    fn from(value: &'x String) -> Self {
+        ContentType::new(value.as_str())
     }
 }
 
@@ -93,72 +129,23 @@ pub fn make_boundary(separator: &str) -> String {
 }
 
 impl<'x> MimePart<'x> {
-    /// Create a custom MIME part.
-    pub fn new(content_type: ContentType<'x>, contents: BodyPart<'x>) -> Self {
+    /// Create a new MIME part.
+    pub fn new(
+        content_type: impl Into<ContentType<'x>>,
+        contents: impl Into<BodyPart<'x>>,
+    ) -> Self {
+        let mut content_type = content_type.into();
+        let contents = contents.into();
+
+        if matches!(contents, BodyPart::Text(_)) && content_type.attributes.is_empty() {
+            content_type
+                .attributes
+                .push((Cow::from("charset"), Cow::from("utf-8")));
+        }
+
         Self {
             contents,
             headers: vec![("Content-Type".into(), content_type.into())],
-        }
-    }
-
-    /// Create a new multipart/* MIME part.
-    pub fn new_multipart(
-        content_type: impl Into<Cow<'x, str>>,
-        contents: Vec<MimePart<'x>>,
-    ) -> Self {
-        Self {
-            contents: BodyPart::Multipart(contents),
-            headers: vec![("Content-Type".into(), ContentType::new(content_type).into())],
-        }
-    }
-
-    /// Create a new text/plain MIME part.
-    pub fn new_text(contents: impl Into<Cow<'x, str>>) -> Self {
-        Self {
-            contents: BodyPart::Text(contents.into()),
-            headers: vec![(
-                "Content-Type".into(),
-                ContentType::new("text/plain")
-                    .attribute("charset", "utf-8")
-                    .into(),
-            )],
-        }
-    }
-
-    /// Create a new text/* MIME part.
-    pub fn new_text_other(
-        content_type: impl Into<Cow<'x, str>>,
-        contents: impl Into<Cow<'x, str>>,
-    ) -> Self {
-        Self {
-            contents: BodyPart::Text(contents.into()),
-            headers: vec![(
-                "Content-Type".into(),
-                ContentType::new(content_type)
-                    .attribute("charset", "utf-8")
-                    .into(),
-            )],
-        }
-    }
-
-    /// Create a new text/html MIME part.
-    pub fn new_html(contents: impl Into<Cow<'x, str>>) -> Self {
-        Self {
-            contents: BodyPart::Text(contents.into()),
-            headers: vec![(
-                "Content-Type".into(),
-                ContentType::new("text/html")
-                    .attribute("charset", "utf-8")
-                    .into(),
-            )],
-        }
-    }
-
-    /// Create a new binary MIME part.
-    pub fn new_binary(c_type: impl Into<Cow<'x, str>>, contents: impl Into<Cow<'x, [u8]>>) -> Self {
-        Self {
-            contents: BodyPart::Binary(contents.into()),
-            headers: vec![("Content-Type".into(), ContentType::new(c_type).into())],
         }
     }
 

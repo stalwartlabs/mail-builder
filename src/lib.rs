@@ -38,7 +38,7 @@
 //!        .to("jane@doe.com")
 //!        .subject("Hello, world!")
 //!        .text_body("Message contents go here.")
-//!        .binary_attachment("image/png", "image.png", [1, 2, 3, 4].as_ref())
+//!        .attachment("image/png", "image.png", [1, 2, 3, 4].as_ref())
 //!        .write_to_string()
 //!        .unwrap();
 //!        
@@ -96,11 +96,11 @@
 //!        .html_body("<p>HTML body with <img src=\"cid:my-image\"/>!</p>")
 //!
 //!        // Include an embedded image as an inline part
-//!        .binary_inline("image/png", "cid:my-image", [0, 1, 2, 3, 4, 5].as_ref())
-//!        .text_attachment("text/plain", "my fíle.txt", "Attachment contents go here.")
+//!        .inline("image/png", "cid:my-image", [0, 1, 2, 3, 4, 5].as_ref())
+//!        .attachment("text/plain", "my fíle.txt", "Attachment contents go here.")
 //!
 //!        // Add text and binary attachments
-//!        .binary_attachment(
+//!        .attachment(
 //!            "text/plain",
 //!            "ハロー・ワールド",
 //!            b"Binary contents go here.".as_ref(),
@@ -124,33 +124,33 @@
 //!        .subject("Nested multipart message")
 //!
 //!        // Define the nested MIME body structure
-//!        .body(MimePart::new_multipart(
+//!        .body(MimePart::new(
 //!            "multipart/mixed",
 //!            vec![
-//!                MimePart::new_text("Part A contents go here...").inline(),
-//!                MimePart::new_multipart(
+//!                MimePart::new("text/plain", "Part A contents go here...").inline(),
+//!                MimePart::new(
 //!                    "multipart/mixed",
 //!                    vec![
-//!                        MimePart::new_multipart(
+//!                        MimePart::new(
 //!                            "multipart/alternative",
 //!                            vec![
-//!                                MimePart::new_multipart(
+//!                                MimePart::new(
 //!                                    "multipart/mixed",
 //!                                    vec![
-//!                                        MimePart::new_text("Part B contents go here...").inline(),
-//!                                        MimePart::new_binary(
+//!                                        MimePart::new("text/plain", "Part B contents go here...").inline(),
+//!                                        MimePart::new(
 //!                                            "image/jpeg",
 //!                                            "Part C contents go here...".as_bytes(),
 //!                                        )
 //!                                        .inline(),
-//!                                        MimePart::new_text("Part D contents go here...").inline(),
+//!                                        MimePart::new("text/plain", "Part D contents go here...").inline(),
 //!                                    ],
 //!                                ),
-//!                                MimePart::new_multipart(
+//!                                MimePart::new(
 //!                                    "multipart/related",
 //!                                    vec![
-//!                                        MimePart::new_html("Part E contents go here...").inline(),
-//!                                        MimePart::new_binary(
+//!                                        MimePart::new("text/html", "Part E contents go here...").inline(),
+//!                                        MimePart::new(
 //!                                            "image/jpeg",
 //!                                            "Part F contents go here...".as_bytes(),
 //!                                        ),
@@ -158,19 +158,19 @@
 //!                                ),
 //!                            ],
 //!                        ),
-//!                        MimePart::new_binary("image/jpeg", "Part G contents go here...".as_bytes())
+//!                        MimePart::new("image/jpeg", "Part G contents go here...".as_bytes())
 //!                            .attachment("image_G.jpg"),
-//!                        MimePart::new_binary(
+//!                        MimePart::new(
 //!                            "application/x-excel",
 //!                            "Part H contents go here...".as_bytes(),
 //!                        ),
-//!                        MimePart::new_binary(
+//!                        MimePart::new(
 //!                            "x-message/rfc822",
 //!                            "Part J contents go here...".as_bytes(),
 //!                        ),
 //!                    ],
 //!                ),
-//!                MimePart::new_text("Part K contents go here...").inline(),
+//!                MimePart::new("text/plain", "Part K contents go here...").inline(),
 //!            ],
 //!        ))
 //!        
@@ -221,12 +221,13 @@ use std::{
 
 use headers::{
     address::Address,
+    content_type::ContentType,
     date::Date,
     message_id::{generate_message_id_header, MessageId},
     text::Text,
     Header, HeaderType,
 };
-use mime::MimePart;
+use mime::{BodyPart, MimePart};
 
 /// Builds an RFC5322 compliant MIME email message.
 #[derive(Clone, Debug)]
@@ -343,7 +344,7 @@ impl<'x> MessageBuilder<'x> {
     /// per message can be set using this function.
     /// To build more complex MIME body structures, use the `body` method instead.
     pub fn text_body(mut self, value: impl Into<Cow<'x, str>>) -> Self {
-        self.text_body = Some(MimePart::new_text(value));
+        self.text_body = Some(MimePart::new("text/plain", BodyPart::Text(value.into())));
         self
     }
 
@@ -351,46 +352,33 @@ impl<'x> MessageBuilder<'x> {
     /// per message can be set using this function.
     /// To build more complex MIME body structures, use the `body` method instead.
     pub fn html_body(mut self, value: impl Into<Cow<'x, str>>) -> Self {
-        self.html_body = Some(MimePart::new_html(value));
+        self.html_body = Some(MimePart::new("text/html", BodyPart::Text(value.into())));
         self
     }
 
     /// Add a binary attachment to the message.
-    pub fn binary_attachment(
+    pub fn attachment(
         mut self,
-        content_type: impl Into<Cow<'x, str>>,
+        content_type: impl Into<ContentType<'x>>,
         filename: impl Into<Cow<'x, str>>,
-        value: impl Into<Cow<'x, [u8]>>,
+        value: impl Into<BodyPart<'x>>,
     ) -> Self {
         self.attachments
             .get_or_insert_with(Vec::new)
-            .push(MimePart::new_binary(content_type, value).attachment(filename));
-        self
-    }
-
-    /// Add a text attachment to the message.
-    pub fn text_attachment(
-        mut self,
-        content_type: impl Into<Cow<'x, str>>,
-        filename: impl Into<Cow<'x, str>>,
-        value: impl Into<Cow<'x, str>>,
-    ) -> Self {
-        self.attachments
-            .get_or_insert_with(Vec::new)
-            .push(MimePart::new_text_other(content_type, value).attachment(filename));
+            .push(MimePart::new(content_type, value).attachment(filename));
         self
     }
 
     /// Add an inline binary to the message.
-    pub fn binary_inline(
+    pub fn inline(
         mut self,
-        content_type: impl Into<Cow<'x, str>>,
+        content_type: impl Into<ContentType<'x>>,
         cid: impl Into<Cow<'x, str>>,
-        value: impl Into<Cow<'x, [u8]>>,
+        value: impl Into<BodyPart<'x>>,
     ) -> Self {
         self.attachments
             .get_or_insert_with(Vec::new)
-            .push(MimePart::new_binary(content_type, value).inline().cid(cid));
+            .push(MimePart::new(content_type, value).inline().cid(cid));
         self
     }
 
@@ -443,35 +431,30 @@ impl<'x> MessageBuilder<'x> {
             match (self.text_body, self.html_body, self.attachments) {
                 (Some(text), Some(html), Some(attachments)) => {
                     let mut parts = Vec::with_capacity(attachments.len() + 1);
-                    parts.push(MimePart::new_multipart(
-                        "multipart/alternative",
-                        vec![text, html],
-                    ));
+                    parts.push(MimePart::new("multipart/alternative", vec![text, html]));
                     parts.extend(attachments);
 
-                    MimePart::new_multipart("multipart/mixed", parts)
+                    MimePart::new("multipart/mixed", parts)
                 }
                 (Some(text), Some(html), None) => {
-                    MimePart::new_multipart("multipart/alternative", vec![text, html])
+                    MimePart::new("multipart/alternative", vec![text, html])
                 }
                 (Some(text), None, Some(attachments)) => {
                     let mut parts = Vec::with_capacity(attachments.len() + 1);
                     parts.push(text);
                     parts.extend(attachments);
-                    MimePart::new_multipart("multipart/mixed", parts)
+                    MimePart::new("multipart/mixed", parts)
                 }
                 (Some(text), None, None) => text,
                 (None, Some(html), Some(attachments)) => {
                     let mut parts = Vec::with_capacity(attachments.len() + 1);
                     parts.push(html);
                     parts.extend(attachments);
-                    MimePart::new_multipart("multipart/mixed", parts)
+                    MimePart::new("multipart/mixed", parts)
                 }
                 (None, Some(html), None) => html,
-                (None, None, Some(attachments)) => {
-                    MimePart::new_multipart("multipart/mixed", attachments)
-                }
-                (None, None, None) => MimePart::new_text("\n"),
+                (None, None, Some(attachments)) => MimePart::new("multipart/mixed", attachments),
+                (None, None, None) => MimePart::new("text/plain", "\n"),
             }
         })
         .write_part(output)?;
@@ -511,36 +494,45 @@ mod tests {
             .from(Address::new_address("John Doe".into(), "john@doe.com"))
             .to(Address::new_address("Jane Doe".into(), "jane@doe.com"))
             .subject("RFC 8621 Section 4.1.4 test")
-            .body(MimePart::new_multipart(
+            .body(MimePart::new(
                 "multipart/mixed",
                 vec![
-                    MimePart::new_text("Part A contents go here...").inline(),
-                    MimePart::new_multipart(
+                    MimePart::new("text/plain", "Part A contents go here...").inline(),
+                    MimePart::new(
                         "multipart/mixed",
                         vec![
-                            MimePart::new_multipart(
+                            MimePart::new(
                                 "multipart/alternative",
                                 vec![
-                                    MimePart::new_multipart(
+                                    MimePart::new(
                                         "multipart/mixed",
                                         vec![
-                                            MimePart::new_text("Part B contents go here...")
-                                                .inline(),
-                                            MimePart::new_binary(
+                                            MimePart::new(
+                                                "text/plain",
+                                                "Part B contents go here...",
+                                            )
+                                            .inline(),
+                                            MimePart::new(
                                                 "image/jpeg",
                                                 "Part C contents go here...".as_bytes(),
                                             )
                                             .inline(),
-                                            MimePart::new_text("Part D contents go here...")
-                                                .inline(),
+                                            MimePart::new(
+                                                "text/plain",
+                                                "Part D contents go here...",
+                                            )
+                                            .inline(),
                                         ],
                                     ),
-                                    MimePart::new_multipart(
+                                    MimePart::new(
                                         "multipart/related",
                                         vec![
-                                            MimePart::new_html("Part E contents go here...")
-                                                .inline(),
-                                            MimePart::new_binary(
+                                            MimePart::new(
+                                                "text/html",
+                                                "Part E contents go here...",
+                                            )
+                                            .inline(),
+                                            MimePart::new(
                                                 "image/jpeg",
                                                 "Part F contents go here...".as_bytes(),
                                             ),
@@ -548,22 +540,19 @@ mod tests {
                                     ),
                                 ],
                             ),
-                            MimePart::new_binary(
-                                "image/jpeg",
-                                "Part G contents go here...".as_bytes(),
-                            )
-                            .attachment("image_G.jpg"),
-                            MimePart::new_binary(
+                            MimePart::new("image/jpeg", "Part G contents go here...".as_bytes())
+                                .attachment("image_G.jpg"),
+                            MimePart::new(
                                 "application/x-excel",
                                 "Part H contents go here...".as_bytes(),
                             ),
-                            MimePart::new_binary(
+                            MimePart::new(
                                 "x-message/rfc822",
                                 "Part J contents go here...".as_bytes(),
                             ),
                         ],
                     ),
-                    MimePart::new_text("Part K contents go here...").inline(),
+                    MimePart::new("text/plain", "Part K contents go here...").inline(),
                 ],
             ))
             .write_to_vec()
@@ -604,9 +593,9 @@ mod tests {
             .subject("Hello world!")
             .text_body("Hello, world!\n".repeat(20))
             .html_body("<p>¡Hola Mundo!</p>".repeat(20))
-            .binary_inline("image/png", "cid:image", [0, 1, 2, 3, 4, 5].as_ref())
-            .text_attachment("text/plain", "my fíle.txt", "안녕하세요 세계".repeat(20))
-            .binary_attachment(
+            .inline("image/png", "cid:image", [0, 1, 2, 3, 4, 5].as_ref())
+            .attachment("text/plain", "my fíle.txt", "안녕하세요 세계".repeat(20))
+            .attachment(
                 "text/plain",
                 "ハロー・ワールド",
                 "ハロー・ワールド".repeat(20).into_bytes(),

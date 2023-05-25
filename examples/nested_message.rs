@@ -20,33 +20,36 @@ fn main() {
         .to(Address::new_address("Jane Doe".into(), "jane@doe.com"))
         .subject("Nested multipart message")
         // Define the nested MIME body structure
-        .body(MimePart::new_multipart(
+        .body(MimePart::new(
             "multipart/mixed",
             vec![
-                MimePart::new_text("Part A contents go here...").inline(),
-                MimePart::new_multipart(
+                MimePart::new("text/plain", "Part A contents go here...").inline(),
+                MimePart::new(
                     "multipart/mixed",
                     vec![
-                        MimePart::new_multipart(
+                        MimePart::new(
                             "multipart/alternative",
                             vec![
-                                MimePart::new_multipart(
+                                MimePart::new(
                                     "multipart/mixed",
                                     vec![
-                                        MimePart::new_text("Part B contents go here...").inline(),
-                                        MimePart::new_binary(
+                                        MimePart::new("text/plain", "Part B contents go here...")
+                                            .inline(),
+                                        MimePart::new(
                                             "image/jpeg",
                                             "Part C contents go here...".as_bytes(),
                                         )
                                         .inline(),
-                                        MimePart::new_text("Part D contents go here...").inline(),
+                                        MimePart::new("text/plain", "Part D contents go here...")
+                                            .inline(),
                                     ],
                                 ),
-                                MimePart::new_multipart(
+                                MimePart::new(
                                     "multipart/related",
                                     vec![
-                                        MimePart::new_html("Part E contents go here...").inline(),
-                                        MimePart::new_binary(
+                                        MimePart::new("text/html", "Part E contents go here...")
+                                            .inline(),
+                                        MimePart::new(
                                             "image/jpeg",
                                             "Part F contents go here...".as_bytes(),
                                         ),
@@ -54,19 +57,16 @@ fn main() {
                                 ),
                             ],
                         ),
-                        MimePart::new_binary("image/jpeg", "Part G contents go here...".as_bytes())
+                        MimePart::new("image/jpeg", "Part G contents go here...".as_bytes())
                             .attachment("image_G.jpg"),
-                        MimePart::new_binary(
+                        MimePart::new(
                             "application/x-excel",
                             "Part H contents go here...".as_bytes(),
                         ),
-                        MimePart::new_binary(
-                            "x-message/rfc822",
-                            "Part J contents go here...".as_bytes(),
-                        ),
+                        MimePart::new("x-message/rfc822", "Part J contents go here...".as_bytes()),
                     ],
                 ),
-                MimePart::new_text("Part K contents go here...").inline(),
+                MimePart::new("text/plain", "Part K contents go here...").inline(),
             ],
         ))
         // Write the message to a file

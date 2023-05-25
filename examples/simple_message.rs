@@ -18,7 +18,7 @@ fn main() {
         .to("jane@doe.com")
         .subject("Hello, world!")
         .text_body("Message contents go here.")
-        .binary_attachment("image/png", "image.png", [1, 2, 3, 4].as_ref())
+        .attachment("image/png", "image.png", [1, 2, 3, 4].as_ref())
         .write_to_string()
         .unwrap();
 

@@ -1,3 +1,7 @@
+mail-builder 0.3.0
+================================
+- Replaced all `Multipart::new*` methods with a single `Multipart::new` method.
+
 mail-builder 0.2.4
 ================================
 - Added "Ludicrous mode" unsafe option for fast encoding.

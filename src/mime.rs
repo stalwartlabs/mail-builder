@@ -190,6 +190,13 @@ impl<'x> MimePart<'x> {
         self
     }
 
+    /// Disable automatic Content-Transfer-Encoding detection and treat this as a raw MIME part
+    pub fn transfer_encoding(mut self, value: impl Into<Cow<'x, str>>) -> Self {
+        self.headers
+            .push(("Content-Transfer-Encoding".into(), Raw::new(value).into()));
+        self
+    }
+
     /// Set custom headers of a MIME part.
     pub fn header(
         mut self,
@@ -232,6 +239,7 @@ impl<'x> MimePart<'x> {
                 match part.contents {
                     BodyPart::Text(text) => {
                         let mut is_attachment = false;
+                        let mut is_raw = false;
                         for (header_name, header_value) in &part.headers {
                             output.write_all(header_name.as_bytes())?;
                             output.write_all(b": ")?;
@@ -240,14 +248,23 @@ impl<'x> MimePart<'x> {
                                     .as_content_type()
                                     .map(|v| v.is_attachment())
                                     .unwrap_or(false);
+                            } else if !is_raw && header_name == "Content-Transfer-Encoding" {
+                                is_raw = true;
                             }
                             header_value.write_header(&mut output, header_name.len() + 2)?;
                         }
-                        detect_encoding(text.as_bytes(), &mut output, !is_attachment)?;
+                        if !is_raw {
+                            detect_encoding(text.as_bytes(), &mut output, !is_attachment)?;
+                        } else {
+                            output.write_all(b"\r\n")?;
+                            output.write_all(text.as_bytes())?;
+                        }
                     }
                     BodyPart::Binary(binary) => {
                         let mut is_text = false;
                         let mut is_attachment = false;
+                        let mut is_raw = false;
+
                         for (header_name, header_value) in &part.headers {
                             output.write_all(header_name.as_bytes())?;
                             output.write_all(b": ")?;
@@ -261,14 +278,22 @@ impl<'x> MimePart<'x> {
                                     .as_content_type()
                                     .map(|v| v.is_attachment())
                                     .unwrap_or(false);
+                            } else if !is_raw && header_name == "Content-Transfer-Encoding" {
+                                is_raw = true;
                             }
                             header_value.write_header(&mut output, header_name.len() + 2)?;
                         }
-                        if !is_text {
-                            output.write_all(b"Content-Transfer-Encoding: base64\r\n\r\n")?;
-                            base64_encode_mime(binary.as_ref(), &mut output, false)?;
+
+                        if !is_raw {
+                            if !is_text {
+                                output.write_all(b"Content-Transfer-Encoding: base64\r\n\r\n")?;
+                                base64_encode_mime(binary.as_ref(), &mut output, false)?;
+                            } else {
+                                detect_encoding(binary.as_ref(), &mut output, !is_attachment)?;
+                            }
                         } else {
-                            detect_encoding(binary.as_ref(), &mut output, !is_attachment)?;
+                            output.write_all(b"\r\n")?;
+                            output.write_all(binary.as_ref())?;
                         }
                     }
                     BodyPart::Multipart(parts) => {

@@ -1,3 +1,7 @@
+mail-builder 0.3.1
+================================
+- Added `MimePart::transfer_encoding` method to disable automatic Content-Transfer-Encoding detection and treat it as a raw MIME part.
+
 mail-builder 0.3.0
 ================================
 - Replaced all `Multipart::new*` methods with a single `Multipart::new` method.

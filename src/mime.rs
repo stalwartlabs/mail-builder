@@ -149,6 +149,14 @@ impl<'x> MimePart<'x> {
         }
     }
 
+    /// Create a new raw MIME part that includes both headers and body.
+    pub fn raw(contents: impl Into<BodyPart<'x>>) -> Self {
+        Self {
+            contents: contents.into(),
+            headers: vec![],
+        }
+    }
+
     /// Set the attachment filename of a MIME part.
     pub fn attachment(mut self, filename: impl Into<Cow<'x, str>>) -> Self {
         self.headers.push((
@@ -239,7 +247,8 @@ impl<'x> MimePart<'x> {
                 match part.contents {
                     BodyPart::Text(text) => {
                         let mut is_attachment = false;
-                        let mut is_raw = false;
+                        let mut is_raw = part.headers.is_empty();
+
                         for (header_name, header_value) in &part.headers {
                             output.write_all(header_name.as_bytes())?;
                             output.write_all(b": ")?;
@@ -256,14 +265,16 @@ impl<'x> MimePart<'x> {
                         if !is_raw {
                             detect_encoding(text.as_bytes(), &mut output, !is_attachment)?;
                         } else {
-                            output.write_all(b"\r\n")?;
+                            if !part.headers.is_empty() {
+                                output.write_all(b"\r\n")?;
+                            }
                             output.write_all(text.as_bytes())?;
                         }
                     }
                     BodyPart::Binary(binary) => {
                         let mut is_text = false;
                         let mut is_attachment = false;
-                        let mut is_raw = false;
+                        let mut is_raw = part.headers.is_empty();
 
                         for (header_name, header_value) in &part.headers {
                             output.write_all(header_name.as_bytes())?;
@@ -292,7 +303,9 @@ impl<'x> MimePart<'x> {
                                 detect_encoding(binary.as_ref(), &mut output, !is_attachment)?;
                             }
                         } else {
-                            output.write_all(b"\r\n")?;
+                            if !part.headers.is_empty() {
+                                output.write_all(b"\r\n")?;
+                            }
                             output.write_all(binary.as_ref())?;
                         }
                     }

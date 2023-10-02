@@ -480,7 +480,7 @@ impl<'x> MessageBuilder<'x> {
 #[cfg(test)]
 mod tests {
 
-    use mail_parser::Message;
+    use mail_parser::MessageParser;
 
     use crate::{
         headers::{address::Address, url::URL},
@@ -557,7 +557,7 @@ mod tests {
             ))
             .write_to_vec()
             .unwrap();
-        Message::parse(&output).unwrap();
+        MessageParser::new().parse(&output).unwrap();
         //fs::write("test.yaml", &serde_yaml::to_string(&message).unwrap()).unwrap();
     }
 
@@ -602,6 +602,6 @@ mod tests {
             )
             .write_to_vec()
             .unwrap();
-        Message::parse(&output).unwrap();
+        MessageParser::new().parse(&output).unwrap();
     }
 }

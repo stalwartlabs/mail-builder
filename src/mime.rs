@@ -42,6 +42,7 @@ pub enum BodyPart<'x> {
     Text(Cow<'x, str>),
     Binary(Cow<'x, [u8]>),
     Multipart(Vec<MimePart<'x>>),
+    Raw(Cow<'x, [u8]>),
 }
 
 impl<'x> From<&'x str> for BodyPart<'x> {
@@ -220,6 +221,7 @@ impl<'x> MimePart<'x> {
         match &self.contents {
             BodyPart::Text(b) => b.len(),
             BodyPart::Binary(b) => b.len(),
+            BodyPart::Raw(b) => b.len(),
             BodyPart::Multipart(bl) => bl.iter().map(|b| b.size()).sum(),
         }
     }
@@ -309,6 +311,15 @@ impl<'x> MimePart<'x> {
                             output.write_all(binary.as_ref())?;
                         }
                     }
+                    BodyPart::Raw(raw) => {
+                        for (header_name, header_value) in &part.headers {
+                            output.write_all(header_name.as_bytes())?;
+                            output.write_all(b": ")?;
+                            header_value.write_header(&mut output, header_name.len() + 2)?;
+                        }
+                        output.write_all(b"\r\n")?;
+                        output.write_all(raw.as_ref())?;                        
+                    },
                     BodyPart::Multipart(parts) => {
                         if boundary.is_some() {
                             stack.push((it, boundary.take()));
@@ -373,7 +384,6 @@ impl<'x> MimePart<'x> {
                             boundary = Some(boundary_.into());
                         }
 
-                        output.write_all(b"\r\n")?;
                         it = parts.into_iter();
                     }
                 }

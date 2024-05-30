@@ -392,12 +392,15 @@ impl<'x> MessageBuilder<'x> {
     pub fn write_to(self, mut output: impl Write) -> io::Result<()> {
         let mut has_date = false;
         let mut has_message_id = false;
+        let mut has_mime_version = false;
 
         for (header_name, header_value) in &self.headers {
             if !has_date && header_name == "Date" {
                 has_date = true;
             } else if !has_message_id && header_name == "Message-ID" {
                 has_message_id = true;
+            } else if !has_mime_version && header_name == "MIME-Version" {
+                has_mime_version = true;
             }
 
             output.write_all(header_name.as_bytes())?;
@@ -418,6 +421,10 @@ impl<'x> MessageBuilder<'x> {
             output.write_all(b"Date: ")?;
             output.write_all(Date::now().to_rfc822().as_bytes())?;
             output.write_all(b"\r\n")?;
+        }
+
+        if !has_mime_version {
+            output.write_all(b"MIME-Version: 1.0\r\n")?;
         }
 
         self.write_body(output)

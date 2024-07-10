@@ -12,11 +12,12 @@ categories = ["email"]
 readme = "README.md"
 
 [features]
-default = []
+default = ["gethostname"]
+gethostname = ["dep:gethostname"]
 ludicrous_mode = []
 
 [dependencies]
-gethostname = "0.4.0"
+gethostname = { version = "0.4.0", optional = true }
 
 [dev-dependencies]
 mail-parser = "0.9"

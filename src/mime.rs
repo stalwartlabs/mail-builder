@@ -108,7 +108,13 @@ thread_local!(static COUNTER: Cell<u64> = Cell::new(0));
 
 pub fn make_boundary(separator: &str) -> String {
     let mut s = DefaultHasher::new();
+
+    #[cfg(feature = "gethostname")]
     gethostname::gethostname().hash(&mut s);
+
+    #[cfg(not(feature = "gethostname"))]
+    "localhost".hash(&mut s);
+
     thread::current().id().hash(&mut s);
     let hash = s.finish();
 

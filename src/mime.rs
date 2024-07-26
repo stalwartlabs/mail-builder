@@ -16,8 +16,13 @@ use std::{
     hash::{Hash, Hasher},
     io::{self, Write},
     thread,
-    time::{Duration, SystemTime, UNIX_EPOCH},
+    time::Duration,
 };
+
+#[cfg(not(target_family="wasm"))]
+use std::time::{SystemTime, UNIX_EPOCH};
+#[cfg(target_family="wasm")]
+use wasmtimer::std::{SystemTime, UNIX_EPOCH};
 
 use crate::{
     encoders::{

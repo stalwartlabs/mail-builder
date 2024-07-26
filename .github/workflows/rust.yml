@@ -16,7 +16,11 @@ jobs:
 
     steps:
     - uses: actions/checkout@v2
+    - name: Install
+      run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
     - name: Build
       run: cargo build --verbose
     - name: Run tests
       run: cargo test --verbose
+    - name: Run wasm tests
+      run: wasm-pack test --node --no-default-features

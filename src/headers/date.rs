@@ -9,10 +9,12 @@
  * except according to those terms.
  */
 
-use std::{
-    io::{self, Write},
-    time::SystemTime,
-};
+use std::io::{self, Write};
+
+#[cfg(not(target_family="wasm"))]
+use std::time::SystemTime;
+#[cfg(target_family="wasm")]
+use wasmtimer::std::SystemTime;
 
 pub static DOW: &[&str] = &["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 pub static MONTH: &[&str] = &[

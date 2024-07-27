@@ -501,7 +501,8 @@ mod tests {
         MessageBuilder,
     };
 
-    #[test]
+    #[cfg_attr(not(target_family = "wasm"), test)]
+    #[cfg_attr(target_family = "wasm", wasm_bindgen_test::wasm_bindgen_test)]
     fn build_nested_message() {
         let output = MessageBuilder::new()
             .from(Address::new_address("John Doe".into(), "john@doe.com"))
@@ -574,7 +575,8 @@ mod tests {
         //fs::write("test.yaml", &serde_yaml::to_string(&message).unwrap()).unwrap();
     }
 
-    #[test]
+    #[cfg_attr(not(target_family = "wasm"), test)]
+    #[cfg_attr(target_family = "wasm", wasm_bindgen_test::wasm_bindgen_test)]
     fn build_message() {
         let output = MessageBuilder::new()
             .from(("John Doe", "john@doe.com"))

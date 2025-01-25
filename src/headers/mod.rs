@@ -51,7 +51,7 @@ impl<'x> From<ContentType<'x>> for HeaderType<'x> {
     }
 }
 
-impl<'x> From<Date> for HeaderType<'x> {
+impl From<Date> for HeaderType<'_> {
     fn from(value: Date) -> Self {
         HeaderType::Date(value)
     }
@@ -78,7 +78,7 @@ impl<'x> From<URL<'x>> for HeaderType<'x> {
     }
 }
 
-impl<'x> Header for HeaderType<'x> {
+impl Header for HeaderType<'_> {
     fn write_header(&self, output: impl Write, bytes_written: usize) -> io::Result<usize> {
         match self {
             HeaderType::Address(value) => value.write_header(output, bytes_written),
@@ -92,8 +92,8 @@ impl<'x> Header for HeaderType<'x> {
     }
 }
 
-impl<'x> HeaderType<'x> {
-    pub fn as_content_type(&self) -> Option<&ContentType> {
+impl HeaderType<'_> {
+    pub fn as_content_type(&self) -> Option<&ContentType<'_>> {
         match self {
             HeaderType::ContentType(value) => Some(value),
             _ => None,

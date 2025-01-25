@@ -52,7 +52,7 @@ impl<'x> ContentType<'x> {
     }
 }
 
-impl<'x> Header for ContentType<'x> {
+impl Header for ContentType<'_> {
     fn write_header(
         &self,
         mut output: impl std::io::Write,

@@ -56,7 +56,7 @@ impl<'x> From<&'x [u8]> for BodyPart<'x> {
     }
 }
 
-impl<'x> From<String> for BodyPart<'x> {
+impl From<String> for BodyPart<'_> {
     fn from(value: String) -> Self {
         BodyPart::Text(value.into())
     }
@@ -74,7 +74,7 @@ impl<'x> From<Cow<'x, str>> for BodyPart<'x> {
     }
 }
 
-impl<'x> From<Vec<u8>> for BodyPart<'x> {
+impl From<Vec<u8>> for BodyPart<'_> {
     fn from(value: Vec<u8>) -> Self {
         BodyPart::Binary(value.into())
     }
@@ -92,7 +92,7 @@ impl<'x> From<&'x str> for ContentType<'x> {
     }
 }
 
-impl<'x> From<String> for ContentType<'x> {
+impl From<String> for ContentType<'_> {
     fn from(value: String) -> Self {
         ContentType::new(value)
     }
@@ -236,7 +236,7 @@ impl<'x> MimePart<'x> {
     pub fn write_part(self, mut output: impl Write) -> io::Result<usize> {
         let mut stack = Vec::new();
         let mut it = vec![self].into_iter();
-        let mut boundary: Option<Cow<str>> = None;
+        let mut boundary: Option<Cow<'_, str>> = None;
 
         loop {
             while let Some(part) = it.next() {

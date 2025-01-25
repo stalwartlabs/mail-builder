@@ -36,7 +36,7 @@ where
     }
 }
 
-impl<'x> Header for Raw<'x> {
+impl Header for Raw<'_> {
     fn write_header(
         &self,
         mut output: impl std::io::Write,

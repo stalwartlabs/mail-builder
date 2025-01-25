@@ -185,8 +185,5 @@ at your option.
 
 ## Copyright
 
-Copyright (C) 2020-2022, Stalwart Labs Ltd.
+Copyright (C) 2020, Stalwart Labs LLC
 
-See [COPYING] for the license.
-
-[COPYING]: https://github.com/stalwartlabs/mail-builder/blob/main/COPYING

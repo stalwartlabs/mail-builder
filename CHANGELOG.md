@@ -1,3 +1,7 @@
+mail-builder 0.4.0
+================================
+- Removed `ludicrous` feature, the Rust compiler is smart enough to optimize array lookups.
+
 mail-builder 0.3.2
 ================================
 - Made `gethostname` crate optional.

@@ -41,7 +41,7 @@ where
     }
 }
 
-impl<'x> Header for Text<'x> {
+impl Header for Text<'_> {
     fn write_header(
         &self,
         mut output: impl std::io::Write,

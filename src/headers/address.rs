@@ -79,7 +79,7 @@ impl<'x> From<(&'x str, &'x str)> for Address<'x> {
     }
 }
 
-impl<'x> From<(String, String)> for Address<'x> {
+impl From<(String, String)> for Address<'_> {
     fn from(value: (String, String)) -> Self {
         Address::Address(EmailAddress {
             name: Some(value.0.into()),
@@ -97,7 +97,7 @@ impl<'x> From<&'x str> for Address<'x> {
     }
 }
 
-impl<'x> From<String> for Address<'x> {
+impl From<String> for Address<'_> {
     fn from(value: String) -> Self {
         Address::Address(EmailAddress {
             name: None,
@@ -128,7 +128,7 @@ where
     }
 }
 
-impl<'x> Header for Address<'x> {
+impl Header for Address<'_> {
     fn write_header(
         &self,
         mut output: impl std::io::Write,
@@ -186,7 +186,7 @@ impl<'x> Header for Address<'x> {
     }
 }
 
-impl<'x> Header for EmailAddress<'x> {
+impl Header for EmailAddress<'_> {
     fn write_header(
         &self,
         mut output: impl std::io::Write,
@@ -211,7 +211,7 @@ impl<'x> Header for EmailAddress<'x> {
     }
 }
 
-impl<'x> Header for GroupedAddresses<'x> {
+impl Header for GroupedAddresses<'_> {
     fn write_header(
         &self,
         mut output: impl std::io::Write,

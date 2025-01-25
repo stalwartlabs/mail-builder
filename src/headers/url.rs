@@ -45,7 +45,7 @@ impl<'x> From<&'x str> for URL<'x> {
     }
 }
 
-impl<'x> From<String> for URL<'x> {
+impl From<String> for URL<'_> {
     fn from(value: String) -> Self {
         Self::new(value)
     }
@@ -78,7 +78,7 @@ where
     }
 }
 
-impl<'x> Header for URL<'x> {
+impl Header for URL<'_> {
     fn write_header(
         &self,
         mut output: impl std::io::Write,

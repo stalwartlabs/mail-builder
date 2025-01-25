@@ -47,7 +47,7 @@ impl<'x> From<&'x str> for MessageId<'x> {
     }
 }
 
-impl<'x> From<String> for MessageId<'x> {
+impl From<String> for MessageId<'_> {
     fn from(value: String) -> Self {
         Self::new(value)
     }
@@ -91,7 +91,7 @@ pub fn generate_message_id_header(
     output.write_all(b">")
 }
 
-impl<'x> Header for MessageId<'x> {
+impl Header for MessageId<'_> {
     fn write_header(
         &self,
         mut output: impl std::io::Write,

@@ -418,3 +418,33 @@ fn detect_encoding(input: &[u8], mut output: impl Write, is_body: bool) -> io::R
     }
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_detect_encoding() {
+        let mut output = Vec::new();
+        detect_encoding(b"a b c\r\n", &mut output, false).unwrap();
+        assert_eq!(output, b"Content-Transfer-Encoding: 7bit\r\n\r\na b c\r\n");
+
+        let mut output = Vec::new();
+        detect_encoding(
+            b"a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a\r\n",
+            &mut output,
+            false,
+        )
+        .unwrap();
+        assert_eq!(output, b"Content-Transfer-Encoding: 7bit\r\n\r\na a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a\r\n");
+
+        let mut output = Vec::new();
+        detect_encoding(
+            b"a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a\r\n",
+            &mut output,
+            false,
+        )
+        .unwrap();
+        assert_eq!(output, b"Content-Transfer-Encoding: quoted-printable\r\n\r\na a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a =\r\na=0D=0A");
+    }
+}

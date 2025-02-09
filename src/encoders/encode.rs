@@ -44,7 +44,7 @@ pub fn get_encoding_type(input: &[u8], is_inline: bool, is_body: bool) -> Encodi
         {
             qp_len += 3;
         } else if ch == b'\n' {
-            if !needs_encoding && line_len > 997 {
+            if !needs_encoding && line_len > 77 {
                 needs_encoding = true;
             }
             if is_body {

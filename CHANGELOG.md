@@ -1,3 +1,7 @@
+mail-builder 0.4.1
+================================
+- Fix: Try to avoid lines longer than 78 characters (#32)
+
 mail-builder 0.4.0
 ================================
 - Removed `ludicrous` feature, the Rust compiler is smart enough to optimize array lookups.

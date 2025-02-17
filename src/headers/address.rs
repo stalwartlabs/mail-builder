@@ -237,6 +237,8 @@ impl Header for GroupedAddresses<'_> {
             }
         }
 
+        output.write_all(b";")?;
+
         Ok(bytes_written)
     }
 }

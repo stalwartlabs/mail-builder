@@ -166,10 +166,6 @@ impl Header for Address<'_> {
                         }
                         Address::Group(group) => {
                             bytes_written += group.write_header(&mut output, bytes_written)?;
-                            if pos < list.len() - 1 {
-                                output.write_all(b"; ")?;
-                                bytes_written += 1;
-                            }
                         }
                         Address::List(_) => unreachable!(),
                     }
@@ -238,6 +234,7 @@ impl Header for GroupedAddresses<'_> {
         }
 
         output.write_all(b";")?;
+        bytes_written += 1;
 
         Ok(bytes_written)
     }

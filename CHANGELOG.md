@@ -1,3 +1,11 @@
+mail-builder 0.4.3
+================================
+- Fix: Duplicate semicolon in group addresses.
+
+mail-builder 0.4.2
+================================
+- Fix: Add semicolon at the end of group addresses.
+
 mail-builder 0.4.1
 ================================
 - Fix: Try to avoid lines longer than 78 characters (#32)

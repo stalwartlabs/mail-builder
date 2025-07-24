@@ -94,3 +94,51 @@ impl Header for Text<'_> {
         Ok(0)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Cursor;
+
+    /// Tests that UTF-8 encoded words are split only at character boundaries.
+    ///
+    /// According to RFC 2047
+    /// "The 'encoded-text' in each 'encoded-word' must be well-formed according to the encoding specified"
+    /// so it is not allowed to split a single UTF-8 character between two encoded-words.
+    #[test]
+    fn test_utf8_encoding_boundaries() {
+        let mut buf = Cursor::new(Vec::new());
+
+        let mut input = String::new();
+
+        // Insert a lot of ASCII characters so the header
+        // is encoded as "Q" encoded-words
+        // rather than "B" encoded-words.
+        for _ in 0..20000 {
+            input += "x";
+        }
+        for _ in 0..600 {
+            // δ is encoded as "=CE=B4".
+            // It should never be split into "...=CE?="
+            // and "=?utf-8?Q?=B4...".
+            input += "δ";
+        }
+
+        // Shift by 1 byte and insert more non-ASCII.
+        input += "x";
+        for _ in 0..600 {
+            input += "δ";
+        }
+
+        let header = Text::new(input);
+        header.write_header(&mut buf, 0).unwrap();
+
+        let output = str::from_utf8(buf.get_ref()).unwrap();
+
+        // Test that "Q" encoding is used.
+        assert!(output.starts_with("=?utf-8?Q?xxx"));
+
+        assert!(!output.contains("CE?="));
+        assert!(!output.contains("=?utf-8?Q?=B4"));
+    }
+}

@@ -9,7 +9,7 @@ use std::borrow::Cow;
 use crate::encoders::{
     base64::base64_encode_mime,
     encode::{get_encoding_type, EncodingType},
-    quoted_printable::inline_quoted_printable_encode,
+    quoted_printable::quoted_printable_encode_byte,
 };
 
 use super::Header;
@@ -54,18 +54,29 @@ impl Header for Text<'_> {
                 }
             }
             EncodingType::QuotedPrintable(is_ascii) => {
-                for (pos, chunk) in self.text.as_bytes().chunks(76 - bytes_written).enumerate() {
-                    if pos > 0 {
-                        output.write_all(b"\t")?;
+                let prefix = if is_ascii {
+                    b"=?us-ascii?Q?".as_ref()
+                } else {
+                    b"=?utf-8?Q?".as_ref()
+                };
+
+                output.write_all(prefix)?;
+                bytes_written += prefix.len();
+
+                for (pos, &ch) in self.text.as_bytes().iter().enumerate() {
+                    // (ch as i8) >= 0x40 is an inlined
+                    // check for UTF-8 char boundary without array access
+                    // taken from private u8.is_char_boundary() implementation:
+                    // https://github.com/rust-lang/rust/blob/8708f3cd1f96d226f6420a58ebdd61aa0bc08b0a/library/core/src/str/mod.rs#L360-L383
+                    if bytes_written >= 76 && (pos == 0 || (ch as i8) >= -0x40) {
+                        output.write_all(b"?=\r\n\t")?;
+                        output.write_all(prefix)?;
+                        bytes_written = 1 + prefix.len();
                     }
-                    if !is_ascii {
-                        output.write_all(b"=?utf-8?Q?")?;
-                    } else {
-                        output.write_all(b"=?us-ascii?Q?")?;
-                    }
-                    inline_quoted_printable_encode(chunk, &mut output)?;
-                    output.write_all(b"?=\r\n")?;
+
+                    bytes_written += quoted_printable_encode_byte(ch, &mut output)?;
                 }
+                output.write_all(b"=\r\n")?;
             }
             EncodingType::None => {
                 for (pos, &ch) in self.text.as_bytes().iter().enumerate() {

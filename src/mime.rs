@@ -398,7 +398,7 @@ fn detect_encoding(input: &[u8], mut output: impl Write, is_body: bool) -> io::R
         }
         EncodingType::QuotedPrintable(_) => {
             output.write_all(b"Content-Transfer-Encoding: quoted-printable\r\n\r\n")?;
-            quoted_printable_encode(input, &mut output, false, is_body)?;
+            quoted_printable_encode(input, &mut output, is_body)?;
         }
         EncodingType::None => {
             output.write_all(b"Content-Transfer-Encoding: 7bit\r\n\r\n")?;

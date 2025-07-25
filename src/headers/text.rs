@@ -9,7 +9,7 @@ use std::borrow::Cow;
 use crate::encoders::{
     base64::base64_encode_mime,
     encode::{get_encoding_type, EncodingType},
-    quoted_printable::quoted_printable_encode,
+    quoted_printable::inline_quoted_printable_encode,
 };
 
 use super::Header;
@@ -63,7 +63,7 @@ impl Header for Text<'_> {
                     } else {
                         output.write_all(b"=?us-ascii?Q?")?;
                     }
-                    quoted_printable_encode(chunk, &mut output, true, false)?;
+                    inline_quoted_printable_encode(chunk, &mut output)?;
                     output.write_all(b"?=\r\n")?;
                 }
             }

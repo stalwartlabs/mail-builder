@@ -44,14 +44,25 @@ impl Header for Text<'_> {
     ) -> std::io::Result<usize> {
         match get_encoding_type(self.text.as_bytes(), true, false) {
             EncodingType::Base64 => {
-                for (pos, chunk) in self.text.as_bytes().chunks(76 - bytes_written).enumerate() {
-                    if pos > 0 {
-                        output.write_all(b"\t")?;
+                output.write_all(b"=?utf-8?B?")?;
+                bytes_written += 10;
+
+                let mut last_pos = 0;
+                for (pos, &ch) in self.text.as_bytes().iter().enumerate() {
+                    // 57 bytes correponds to 76 base64 characters.
+                    if bytes_written > 57 && (pos == 0 || (ch as i8) >= -0x40) {
+                        let chunk = self.text.as_bytes().get(last_pos..pos).unwrap_or_default();
+                        base64_encode_mime(chunk, &mut output, true)?;
+
+                        output.write_all(b"?=\r\n\t=?utf-8?B?")?;
+                        bytes_written = 10;
+                        last_pos = pos;
                     }
-                    output.write_all(b"=?utf-8?B?")?;
-                    base64_encode_mime(chunk, &mut output, true)?;
-                    output.write_all(b"?=\r\n")?;
+                    bytes_written += 1;
                 }
+                let chunk = self.text.as_bytes().get(last_pos..).unwrap_or_default();
+                base64_encode_mime(chunk, &mut output, true)?;
+                output.write_all(b"?=\r\n")?;
             }
             EncodingType::QuotedPrintable(is_ascii) => {
                 let prefix = if is_ascii {
@@ -100,13 +111,13 @@ mod tests {
     use super::*;
     use std::io::Cursor;
 
-    /// Tests that UTF-8 encoded words are split only at character boundaries.
+    /// Tests that UTF-8 "Q"-encoded words are split only at character boundaries.
     ///
     /// According to RFC 2047
     /// "The 'encoded-text' in each 'encoded-word' must be well-formed according to the encoding specified"
     /// so it is not allowed to split a single UTF-8 character between two encoded-words.
     #[test]
-    fn test_utf8_encoding_boundaries() {
+    fn test_utf8_q_encoding_boundaries() {
         let mut buf = Cursor::new(Vec::new());
 
         let mut input = String::new();
@@ -140,5 +151,32 @@ mod tests {
 
         assert!(!output.contains("CE?="));
         assert!(!output.contains("=?utf-8?Q?=B4"));
+    }
+
+    /// Tests that UTF-8 "B"-encoded words are split only at character boundaries.
+    #[test]
+    fn test_utf8_b_encoding_boundaries() {
+        let mut buf = Cursor::new(Vec::new());
+
+        let mut input = String::new();
+
+        for _ in 0..600 {
+            input += "δ";
+        }
+        input += "x";
+        for _ in 0..600 {
+            input += "δ";
+        }
+
+        let header = Text::new(input);
+        header.write_header(&mut buf, 0).unwrap();
+
+        let output = str::from_utf8(buf.get_ref()).unwrap();
+
+        // Test that "B" encoding is used.
+        assert!(output.starts_with("=?utf-8?B?zrTOtM60zrTOtM60"));
+
+        assert!(!output.contains("zg==?=")); // \xb4 at the end of the word
+        assert!(!output.contains("?B?tM60zr")); // \xce at the beginning of the word
     }
 }

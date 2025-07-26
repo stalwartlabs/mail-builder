@@ -6,84 +6,92 @@
 
 use std::io::{self, Write};
 
+/// Encodes a single byte using the "Q" encoding from RFC 2047.
+///
+/// Returns the number of bytes written.
+pub fn quoted_printable_encode_byte(ch: u8, output: &mut impl Write) -> io::Result<usize> {
+    if ch == b'=' || ch == b'?' || ch == b'\t' || ch == b'\r' || ch == b'\n' || ch >= 127 {
+        output.write_all(format!("={:02X}", ch).as_bytes())?;
+        Ok(3)
+    } else if ch == b' ' {
+        output.write_all(b"_")?;
+        Ok(1)
+    } else {
+        output.write_all(&[ch])?;
+        Ok(1)
+    }
+}
+
+/// Encodes input according using the "Q" encoding from RFC 2047.
+pub fn inline_quoted_printable_encode(input: &[u8], output: &mut impl Write) -> io::Result<usize> {
+    let mut bytes_written = 0;
+    for &ch in input.iter() {
+        bytes_written += quoted_printable_encode_byte(ch, output)?;
+    }
+    Ok(bytes_written)
+}
+
 pub fn quoted_printable_encode(
     input: &[u8],
     mut output: impl Write,
-    is_inline: bool,
     is_body: bool,
 ) -> io::Result<usize> {
     let mut bytes_written = 0;
-    if !is_inline {
-        if is_body {
-            let mut prev_ch = 0;
-            for (pos, &ch) in input.iter().enumerate() {
-                if ch == b'='
-                    || ch >= 127
-                    || ((ch == b' ' || ch == b'\t')
-                        && (matches!(input.get(pos + 1..), Some([b'\n', ..] | [b'\r', b'\n', ..]))
-                            || (pos == input.len() - 1)))
-                {
-                    if bytes_written + 3 > 76 {
-                        output.write_all(b"=\r\n")?;
-                        bytes_written = 0;
-                    }
-                    output.write_all(format!("={:02X}", ch).as_bytes())?;
-                    bytes_written += 3;
-                } else if ch == b'\n' {
-                    if prev_ch != b'\r' {
-                        output.write_all(b"\r\n")?;
-                    } else {
-                        output.write_all(b"\n")?;
-                    }
+    if is_body {
+        let mut prev_ch = 0;
+        for (pos, &ch) in input.iter().enumerate() {
+            if ch == b'='
+                || ch >= 127
+                || ((ch == b' ' || ch == b'\t')
+                    && (matches!(input.get(pos + 1..), Some([b'\n', ..] | [b'\r', b'\n', ..]))
+                        || (pos == input.len() - 1)))
+            {
+                if bytes_written + 3 > 76 {
+                    output.write_all(b"=\r\n")?;
                     bytes_written = 0;
-                } else {
-                    prev_ch = ch;
-                    if bytes_written + 1 > 76 {
-                        output.write_all(b"=\r\n")?;
-                        bytes_written = 0;
-                    }
-                    output.write_all(&[ch])?;
-                    bytes_written += 1;
                 }
-            }
-        } else {
-            for (pos, &ch) in input.iter().enumerate() {
-                if ch == b'='
-                    || ch >= 127
-                    || (ch == b'\r' || ch == b'\n')
-                    || ((ch == b' ' || ch == b'\t') && (pos == input.len() - 1))
-                {
-                    if bytes_written + 3 > 76 {
-                        output.write_all(b"=\r\n")?;
-                        bytes_written = 0;
-                    }
-                    output.write_all(format!("={:02X}", ch).as_bytes())?;
-                    bytes_written += 3;
+                output.write_all(format!("={:02X}", ch).as_bytes())?;
+                bytes_written += 3;
+            } else if ch == b'\n' {
+                if prev_ch != b'\r' {
+                    output.write_all(b"\r\n")?;
                 } else {
-                    if bytes_written + 1 > 76 {
-                        output.write_all(b"=\r\n")?;
-                        bytes_written = 0;
-                    }
-                    output.write_all(&[ch])?;
-                    bytes_written += 1;
+                    output.write_all(b"\n")?;
                 }
+                bytes_written = 0;
+            } else {
+                prev_ch = ch;
+                if bytes_written + 1 > 76 {
+                    output.write_all(b"=\r\n")?;
+                    bytes_written = 0;
+                }
+                output.write_all(&[ch])?;
+                bytes_written += 1;
             }
         }
     } else {
-        for &ch in input.iter() {
-            if ch == b'=' || ch == b'?' || ch == b'\t' || ch == b'\r' || ch == b'\n' || ch >= 127 {
+        for (pos, &ch) in input.iter().enumerate() {
+            if ch == b'='
+                || ch >= 127
+                || (ch == b'\r' || ch == b'\n')
+                || ((ch == b' ' || ch == b'\t') && (pos == input.len() - 1))
+            {
+                if bytes_written + 3 > 76 {
+                    output.write_all(b"=\r\n")?;
+                    bytes_written = 0;
+                }
                 output.write_all(format!("={:02X}", ch).as_bytes())?;
                 bytes_written += 3;
-            } else if ch == b' ' {
-                output.write_all(b"_")?;
-                bytes_written += 1;
             } else {
+                if bytes_written + 1 > 76 {
+                    output.write_all(b"=\r\n")?;
+                    bytes_written = 0;
+                }
                 output.write_all(&[ch])?;
                 bytes_written += 1;
             }
         }
     }
-
     Ok(bytes_written)
 }
 
@@ -161,7 +169,7 @@ mod tests {
             ),
         ] {
             let mut output = Vec::new();
-            super::quoted_printable_encode(input.as_bytes(), &mut output, false, true).unwrap();
+            super::quoted_printable_encode(input.as_bytes(), &mut output, true).unwrap();
             assert_eq!(
                 std::str::from_utf8(&output).unwrap(),
                 expected_result_body,
@@ -169,7 +177,7 @@ mod tests {
             );
 
             let mut output = Vec::new();
-            super::quoted_printable_encode(input.as_bytes(), &mut output, false, false).unwrap();
+            super::quoted_printable_encode(input.as_bytes(), &mut output, false).unwrap();
             assert_eq!(
                 std::str::from_utf8(&output).unwrap(),
                 expected_result_attachment,
@@ -177,7 +185,7 @@ mod tests {
             );
 
             let mut output = Vec::new();
-            super::quoted_printable_encode(input.as_bytes(), &mut output, true, false).unwrap();
+            super::inline_quoted_printable_encode(input.as_bytes(), &mut output).unwrap();
             assert_eq!(
                 std::str::from_utf8(&output).unwrap(),
                 expected_result_inline,

@@ -6,13 +6,12 @@
 
 use std::borrow::Cow;
 
+use super::Header;
 use crate::encoders::{
     base64::base64_encode_mime,
     encode::{get_encoding_type, EncodingType},
     quoted_printable::quoted_printable_encode_byte,
 };
-
-use super::Header;
 
 /// Unstructured text e-mail header.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
@@ -40,7 +39,7 @@ impl Header for Text<'_> {
     fn write_header(
         &self,
         mut output: impl std::io::Write,
-        mut bytes_written: usize,
+        bytes_written: usize,
     ) -> std::io::Result<usize> {
         match get_encoding_type(self.text.as_bytes(), true, false) {
             EncodingType::Base64 => {
@@ -79,15 +78,7 @@ impl Header for Text<'_> {
                 output.write_all(b"=\r\n")?;
             }
             EncodingType::None => {
-                for (pos, &ch) in self.text.as_bytes().iter().enumerate() {
-                    if bytes_written >= 76 && ch.is_ascii_whitespace() && pos < self.text.len() - 1
-                    {
-                        output.write_all(b"\r\n\t")?;
-                        bytes_written = 1;
-                    }
-                    output.write_all(&[ch])?;
-                    bytes_written += 1;
-                }
+                output.write_all(self.text.as_bytes())?;
                 output.write_all(b"\r\n")?;
             }
         }

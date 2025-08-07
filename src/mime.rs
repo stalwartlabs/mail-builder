@@ -446,5 +446,14 @@ mod tests {
         )
         .unwrap();
         assert_eq!(output, b"Content-Transfer-Encoding: quoted-printable\r\n\r\na a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a =\r\na=0D=0A");
+
+        let mut output = Vec::new();
+        let long_line = "a".repeat(100);
+        detect_encoding(long_line.as_bytes(), &mut output, false).unwrap();
+        let expected = format!(
+            "Content-Transfer-Encoding: quoted-printable\r\n\r\n{}",
+            "a".repeat(76) + "=\r\n" + &"a".repeat(24)
+        );
+        assert_eq!(output, expected.as_bytes());
     }
 }

@@ -42,10 +42,39 @@ impl Header for Text<'_> {
         mut output: impl std::io::Write,
         mut bytes_written: usize,
     ) -> std::io::Result<usize> {
+        // There is always a header or continuation whitespace before inline text.
+        debug_assert!(bytes_written > 0);
+
+        // If already written header name is long,
+        // wrap the first line.
+        if bytes_written >= 76 {
+            output.write_all(b"\r\n")?;
+            bytes_written = 0;
+        }
+
         match get_encoding_type(self.text.as_bytes(), true, false) {
             EncodingType::Base64 => {
-                for (pos, chunk) in self.text.as_bytes().chunks(76 - bytes_written).enumerate() {
-                    if pos > 0 {
+                let mut last_pos = 0;
+                for (pos, _ch) in self.text.char_indices() {
+                    // 57 bytes corresponds to 76 base64 characters
+                    if bytes_written + pos - last_pos > 57 {
+                        let chunk = self.text.as_bytes().get(last_pos..pos).unwrap_or_default();
+                        debug_assert!(!chunk.is_empty());
+                        if bytes_written == 0 {
+                            output.write_all(b"\t")?;
+                        }
+
+                        output.write_all(b"=?utf-8?B?")?;
+                        base64_encode_mime(chunk, &mut output, true)?;
+                        output.write_all(b"?=\r\n")?;
+                        bytes_written = 0;
+                        last_pos = pos;
+                    }
+                }
+
+                let chunk = self.text.as_bytes().get(last_pos..).unwrap_or_default();
+                if !chunk.is_empty() {
+                    if bytes_written == 0 {
                         output.write_all(b"\t")?;
                     }
                     output.write_all(b"=?utf-8?B?")?;
@@ -100,13 +129,13 @@ mod tests {
     use super::*;
     use std::io::Cursor;
 
-    /// Tests that UTF-8 encoded words are split only at character boundaries.
+    /// Tests that UTF-8 "Q"-encoded words are split only at character boundaries.
     ///
     /// According to RFC 2047
     /// "The 'encoded-text' in each 'encoded-word' must be well-formed according to the encoding specified"
     /// so it is not allowed to split a single UTF-8 character between two encoded-words.
     #[test]
-    fn test_utf8_encoding_boundaries() {
+    fn test_utf8_q_encoding_boundaries() {
         let mut buf = Cursor::new(Vec::new());
 
         let mut input = String::new();
@@ -131,7 +160,7 @@ mod tests {
         }
 
         let header = Text::new(input);
-        header.write_header(&mut buf, 0).unwrap();
+        header.write_header(&mut buf, 10).unwrap();
 
         let output = str::from_utf8(buf.get_ref()).unwrap();
 
@@ -140,5 +169,59 @@ mod tests {
 
         assert!(!output.contains("CE?="));
         assert!(!output.contains("=?utf-8?Q?=B4"));
+    }
+
+    /// Returns a header contents string that will be "B"-encoded.
+    fn b_encoded_input() -> String {
+        let mut input = String::new();
+
+        for _ in 0..600 {
+            input += "δ";
+        }
+        input += "x";
+        for _ in 0..600 {
+            input += "δ";
+        }
+        input
+    }
+
+    /// Tests that UTF-8 "B"-encoded words are split only at character boundaries.
+    #[test]
+    fn test_utf8_b_encoding_boundaries() {
+        let mut buf = Cursor::new(Vec::new());
+
+        let input = b_encoded_input();
+
+        let header = Text::new(input);
+        header.write_header(&mut buf, 10).unwrap();
+
+        let output = str::from_utf8(buf.get_ref()).unwrap();
+
+        // Test that "B" encoding is used.
+        assert!(output.starts_with("=?utf-8?B?zrTOtM60zrTOtM60"));
+
+        assert!(!output.contains("zg==?=")); // \xb4 at the end of the word
+        assert!(!output.contains("?B?tM60zr")); // \xce at the beginning of the word
+
+        assert!(output.ends_with("\r\n"));
+    }
+
+    /// Tests encoding of UTF-8 "B"-encoded words after a very long header name.
+    /// The header should be wrapped immediately in the beginning.
+    #[test]
+    fn test_utf8_b_encoding_large_bytes_written() {
+        let mut buf = Cursor::new(Vec::new());
+
+        let input = b_encoded_input();
+
+        let header = Text::new(input);
+
+        let bytes_written = 500;
+        header.write_header(&mut buf, bytes_written).unwrap();
+
+        let output = str::from_utf8(buf.get_ref()).unwrap();
+
+        // Output starts with a newline and continuation space.
+        assert!(output.starts_with("\r\n\t=?utf-8?B?zrTOtM60zrTOtM60"));
     }
 }

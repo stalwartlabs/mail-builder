@@ -66,6 +66,10 @@ pub fn get_encoding_type(input: &[u8], is_inline: bool, is_body: bool) -> Encodi
         prev_ch = ch;
     }
 
+    if !needs_encoding && line_len > 77 {
+        needs_encoding = true;
+    }
+
     if !needs_encoding {
         EncodingType::None
     } else if qp_len < base64_len {

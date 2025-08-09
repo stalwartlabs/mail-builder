@@ -76,7 +76,7 @@ impl Header for Text<'_> {
 
                     bytes_written += quoted_printable_encode_byte(ch, &mut output)?;
                 }
-                output.write_all(b"=\r\n")?;
+                output.write_all(b"?=\r\n")?;
             }
             EncodingType::None => {
                 for (pos, &ch) in self.text.as_bytes().iter().enumerate() {

@@ -283,7 +283,7 @@ impl<'x> MessageBuilder<'x> {
     pub fn write_to_string(self) -> io::Result<String> {
         let mut output = Vec::new();
         self.write_to(&mut output)?;
-        String::from_utf8(output).map_err(|err| io::Error::new(io::ErrorKind::Other, err))
+        String::from_utf8(output).map_err(io::Error::other)
     }
 }
 

@@ -10,22 +10,19 @@ use std::io::{self, Write};
 ///
 /// Returns the number of bytes written.
 pub fn quoted_printable_encode_byte(ch: u8, output: &mut impl Write) -> io::Result<usize> {
-    if ch == b'='
-        || ch == b'?'
-        || ch == b'_'
-        || ch == b'\t'
-        || ch == b'\r'
-        || ch == b'\n'
-        || ch >= 127
-    {
-        output.write_all(format!("={:02X}", ch).as_bytes())?;
-        Ok(3)
-    } else if ch == b' ' {
-        output.write_all(b"_")?;
-        Ok(1)
-    } else {
-        output.write_all(&[ch])?;
-        Ok(1)
+    match ch {
+        b'=' | b'?' | b'_' | b'\t' | b'\r' | b'\n' | 127..=u8::MAX => {
+            output.write_all(format!("={:02X}", ch).as_bytes())?;
+            Ok(3)
+        }
+        b' ' => {
+            output.write_all(b"_")?;
+            Ok(1)
+        }
+        _ => {
+            output.write_all(&[ch])?;
+            Ok(1)
+        }
     }
 }
 

@@ -1,3 +1,9 @@
+mail-builder 0.4.4
+================================
+- Do not split UTF-8 characters between encoded-words (#41)
+- Escape underscores for quoted printable encoding (#39) (#43)
+- Fix `Content-Transfer-Encoding` auto-detection for single long lines (#44) (#45)
+
 mail-builder 0.4.3
 ================================
 - Fix: Duplicate semicolon in group addresses.
@@ -20,7 +26,7 @@ mail-builder 0.3.2
 
 mail-builder 0.3.1
 ================================
-- Added `MimePart::transfer_encoding` method to disable automatic Content-Transfer-Encoding detection and treat it as a raw MIME part.
+- Added `MimePart::transfer_encoding` method to disable automatic `Content-Transfer-Encoding` detection and treat it as a raw MIME part.
 
 mail-builder 0.3.0
 ================================

@@ -52,10 +52,14 @@ impl Header for Text<'_> {
         match get_encoding_type(self.text.as_bytes(), true, false) {
             EncodingType::Base64 => {
                 let mut last_pos = 0;
-                let mut chars = self.text.char_indices().map(|(pos, _)| pos);
+                let mut chars = self.text.as_bytes().iter().enumerate();
 
                 while let Some(pos) = chars
-                    .find(|pos| bytes_written + 13 + (pos - last_pos).div_ceil(3) * 4 > 76)
+                    .find(|(pos, ch)| {
+                        (**ch as i8) >= -0x40
+                            && bytes_written + 13 + (pos - last_pos).div_ceil(3) * 4 > 76
+                    })
+                    .map(|(pos, _)| pos)
                     .or_else(|| (last_pos < self.text.len()).then_some(self.text.len()))
                 {
                     let chunk = self.text.as_bytes().get(last_pos..pos).unwrap_or_default();

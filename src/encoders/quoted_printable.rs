@@ -9,7 +9,8 @@ use std::io::{self, Write};
 /// Encodes a single byte using the "Q" encoding from RFC 2047.
 ///
 /// Returns the number of bytes written.
-pub fn quoted_printable_encode_byte(ch: u8, output: &mut impl Write) -> io::Result<usize> {
+#[inline]
+pub(crate) fn quoted_printable_encode_byte(ch: u8, output: &mut impl Write) -> io::Result<usize> {
     match ch {
         b'=' | b'?' | b'_' | b'\t' | b'\r' | b'\n' | 127..=u8::MAX => {
             output.write_all(format!("={:02X}", ch).as_bytes())?;
@@ -27,7 +28,10 @@ pub fn quoted_printable_encode_byte(ch: u8, output: &mut impl Write) -> io::Resu
 }
 
 /// Encodes input according using the "Q" encoding from RFC 2047.
-pub fn inline_quoted_printable_encode(input: &[u8], output: &mut impl Write) -> io::Result<usize> {
+pub(crate) fn inline_quoted_printable_encode(
+    input: &[u8],
+    output: &mut impl Write,
+) -> io::Result<usize> {
     let mut bytes_written = 0;
     for &ch in input.iter() {
         bytes_written += quoted_printable_encode_byte(ch, output)?;
@@ -35,7 +39,7 @@ pub fn inline_quoted_printable_encode(input: &[u8], output: &mut impl Write) -> 
     Ok(bytes_written)
 }
 
-pub fn quoted_printable_encode(
+pub(crate) fn quoted_printable_encode(
     input: &[u8],
     mut output: impl Write,
     is_body: bool,

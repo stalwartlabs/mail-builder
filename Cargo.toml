@@ -1,8 +1,8 @@
 [package]
 name = "mail-builder"
 description = "E-mail builder library for Rust"
-version = "0.4.4"
-edition = "2021"
+version = "0.5.0"
+edition = "2024"
 authors = [ "Stalwart Labs <hello@stalw.art>"]
 license = "Apache-2.0 OR MIT"
 repository = "https://github.com/stalwartlabs/mail-builder"

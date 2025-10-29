@@ -6,7 +6,7 @@
 
 use std::borrow::Cow;
 
-use crate::encoders::encode::rfc2047_encode;
+use crate::encoders::encode::rfc2231_encode_parameter;
 
 use super::Header;
 
@@ -59,18 +59,24 @@ impl Header for ContentType<'_> {
             output.write_all(b"; ")?;
             bytes_written += 2;
             for (pos, (key, value)) in self.attributes.iter().enumerate() {
-                if bytes_written + key.len() + value.len() + 3 >= 76 {
+                let parameter_len = key.len() + value.len() + 3;
+
+                if pos != 0 {
+                    if bytes_written + parameter_len >= 75 {
+                        output.write_all(b";")?;
+                        bytes_written += 1;
+                    } else {
+                        output.write_all(b"; ")?;
+                        bytes_written += 2;
+                    }
+                }
+
+                if bytes_written + parameter_len >= 76 {
                     output.write_all(b"\r\n\t")?;
                     bytes_written = 1;
                 }
 
-                output.write_all(key.as_bytes())?;
-                output.write_all(b"=")?;
-                bytes_written += rfc2047_encode(value, &mut output)? + key.len() + 1;
-                if pos < self.attributes.len() - 1 {
-                    output.write_all(b"; ")?;
-                    bytes_written += 2;
-                }
+                bytes_written = rfc2231_encode_parameter(key, value, &mut output, bytes_written)?;
             }
         }
         output.write_all(b"\r\n")?;

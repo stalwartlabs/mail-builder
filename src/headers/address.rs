@@ -4,11 +4,9 @@
  * SPDX-License-Identifier: Apache-2.0 OR MIT
  */
 
-use std::borrow::Cow;
-
-use crate::encoders::encode::rfc2047_encode;
-
 use super::Header;
+use crate::encoders::encode::rfc2047_encode_phrase;
+use std::borrow::Cow;
 
 /// RFC5322 e-mail address
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
@@ -188,7 +186,7 @@ impl Header for EmailAddress<'_> {
         mut bytes_written: usize,
     ) -> std::io::Result<usize> {
         if let Some(name) = &self.name {
-            bytes_written += rfc2047_encode(name, &mut output)?;
+            bytes_written += rfc2047_encode_phrase(name, &mut output)?;
             if bytes_written + self.email.len() + 2 >= 76 {
                 output.write_all(b"\r\n\t")?;
                 bytes_written = 1;
@@ -213,7 +211,7 @@ impl Header for GroupedAddresses<'_> {
         mut bytes_written: usize,
     ) -> std::io::Result<usize> {
         if let Some(name) = &self.name {
-            bytes_written += rfc2047_encode(name, &mut output)? + 2;
+            bytes_written += rfc2047_encode_phrase(name, &mut output)? + 2;
             output.write_all(b": ")?;
         }
 
@@ -241,5 +239,201 @@ impl Header for GroupedAddresses<'_> {
         bytes_written += 1;
 
         Ok(bytes_written)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use mail_parser::MessageParser;
+
+    fn build(address: Address<'_>) -> String {
+        let mut output = Vec::new();
+        address.write_header(&mut output, 4).unwrap();
+        String::from_utf8(output).unwrap()
+    }
+
+    fn parse(header: &str) -> Vec<(Option<String>, Option<String>)> {
+        let raw = format!("Cc: {header}\r\n");
+        let message = MessageParser::new().parse_headers(raw.as_bytes()).unwrap();
+        message
+            .cc()
+            .unwrap()
+            .iter()
+            .map(|addr| {
+                (
+                    addr.name().map(str::to_string),
+                    addr.address().map(str::to_string),
+                )
+            })
+            .collect()
+    }
+
+    #[test]
+    fn encoded_display_name_is_not_wrapped_in_quotes() {
+        let header = build(Address::new_address(
+            Some("Anna Müller"),
+            "anna@example.com",
+        ));
+        assert!(
+            !header.contains("\"=?"),
+            "quoted encoded-word in {header:?}"
+        );
+        assert!(header.contains("=?utf-8?"), "not encoded in {header:?}");
+        assert_eq!(
+            parse(&header),
+            vec![(
+                Some("Anna Müller".to_string()),
+                Some("anna@example.com".to_string())
+            )]
+        );
+    }
+
+    #[test]
+    fn base64_display_name_is_not_wrapped_in_quotes() {
+        let name = "Δοκιμή, Εταιρεία";
+        let header = build(Address::new_address(Some(name), "info@example.org"));
+        assert!(header.contains("=?utf-8?B?"), "not base64 in {header:?}");
+        assert!(
+            !header.contains("\"=?"),
+            "quoted encoded-word in {header:?}"
+        );
+        assert_eq!(
+            parse(&header),
+            vec![(Some(name.to_string()), Some("info@example.org".to_string()))]
+        );
+    }
+
+    #[test]
+    fn display_name_containing_quotes_and_comma_round_trips() {
+        let name = "\"Steuerberater, Wirtschaftsprüfer\"";
+        let header = build(Address::new_list(vec![
+            Address::new_address(Some("Anna Müller"), "anna@example.com"),
+            Address::new_address(Some(name), "kanzlei@example.org"),
+        ]));
+
+        assert!(
+            !header.contains("\"=?"),
+            "quoted encoded-word in {header:?}"
+        );
+
+        assert_eq!(
+            parse(&header),
+            vec![
+                (
+                    Some("Anna Müller".to_string()),
+                    Some("anna@example.com".to_string())
+                ),
+                (
+                    Some(name.to_string()),
+                    Some("kanzlei@example.org".to_string())
+                ),
+            ],
+            "{header:?}"
+        );
+    }
+
+    #[test]
+    fn comma_in_encoded_display_name_does_not_split_list() {
+        let header = build(Address::new_list(vec![
+            Address::new_address(Some("Müller, Anna"), "anna@example.com"),
+            Address::new_address(Some("Beispiel GmbH"), "info@example.org"),
+        ]));
+        assert_eq!(
+            header.matches(',').count(),
+            1,
+            "comma left unescaped inside encoded-word in {header:?}"
+        );
+
+        let parsed = parse(&header);
+        assert_eq!(parsed.len(), 2, "{header:?}");
+        assert_eq!(parsed[0].0.as_deref(), Some("Müller, Anna"), "{header:?}");
+    }
+
+    #[test]
+    fn phrase_encoded_word_escapes_specials() {
+        let header = build(Address::new_address(
+            Some("Meier (Kanzlei) <x>; [y] \"z\" @ w\\v: u, tü"),
+            "info@example.org",
+        ));
+        assert!(header.contains("?Q?"), "not Q encoded in {header:?}");
+
+        let encoded = header
+            .split_once("?Q?")
+            .unwrap()
+            .1
+            .split_once("?=")
+            .unwrap()
+            .0;
+
+        for ch in [
+            '(', ')', '<', '>', '[', ']', ':', ';', '@', '\\', ',', '"', '.',
+        ] {
+            assert!(!encoded.contains(ch), "raw {ch:?} in {encoded:?}");
+        }
+
+        assert_eq!(
+            parse(&header),
+            vec![(
+                Some("Meier (Kanzlei) <x>; [y] \"z\" @ w\\v: u, tü".to_string()),
+                Some("info@example.org".to_string())
+            )]
+        );
+    }
+
+    #[test]
+    fn ascii_display_name_with_comma_uses_quoted_string() {
+        let header = build(Address::new_address(Some("Doe, John"), "john@example.com"));
+        assert!(header.contains("\"Doe, John\""), "{header:?}");
+        assert_eq!(
+            parse(&header),
+            vec![(
+                Some("Doe, John".to_string()),
+                Some("john@example.com".to_string())
+            )]
+        );
+    }
+
+    #[test]
+    fn ascii_display_name_with_quotes_is_escaped() {
+        let name = "John \"JD\" Doe";
+        let header = build(Address::new_address(Some(name), "john@example.com"));
+        assert_eq!(
+            parse(&header),
+            vec![(Some(name.to_string()), Some("john@example.com".to_string()))],
+            "{header:?}"
+        );
+    }
+
+    #[test]
+    fn group_name_with_specials_round_trips() {
+        let header = build(Address::new_group(
+            Some("Büro, Empfang"),
+            vec![Address::new_address(
+                Some("Anna Müller"),
+                "anna@example.com",
+            )],
+        ));
+        assert!(
+            !header.contains("\"=?"),
+            "quoted encoded-word in {header:?}"
+        );
+
+        let raw = format!("Cc: {header}\r\n");
+        let message = MessageParser::new().parse_headers(raw.as_bytes()).unwrap();
+        let groups = message.cc().unwrap().as_group().expect("not a group");
+
+        assert_eq!(groups.len(), 1, "{header:?}");
+        assert_eq!(
+            groups[0].name.as_deref(),
+            Some("Büro, Empfang"),
+            "{header:?}"
+        );
+        assert_eq!(groups[0].addresses.len(), 1, "{header:?}");
+        assert_eq!(
+            groups[0].addresses[0].name.as_deref(),
+            Some("Anna Müller"),
+            "{header:?}"
+        );
     }
 }

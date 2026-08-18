@@ -6,7 +6,7 @@
 
 use std::fs::File;
 
-use mail_builder::{headers::address::Address, mime::MimePart, MessageBuilder};
+use mail_builder::{MessageBuilder, headers::address::Address, mime::MimePart};
 
 fn main() {
     // Build a nested multipart message

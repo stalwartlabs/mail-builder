@@ -17,12 +17,12 @@ use std::{
 };
 
 use headers::{
+    Header, HeaderType,
     address::Address,
     content_type::ContentType,
     date::Date,
-    message_id::{generate_message_id_header, MessageId},
+    message_id::{MessageId, generate_message_id_header},
     text::Text,
-    Header, HeaderType,
 };
 use mime::{BodyPart, MimePart};
 
@@ -293,9 +293,9 @@ mod tests {
     use mail_parser::MessageParser;
 
     use crate::{
+        MessageBuilder,
         headers::{address::Address, url::URL},
         mime::MimePart,
-        MessageBuilder,
     };
 
     #[test]

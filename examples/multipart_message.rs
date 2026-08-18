@@ -6,7 +6,7 @@
 
 use std::fs::File;
 
-use mail_builder::{headers::url::URL, MessageBuilder};
+use mail_builder::{MessageBuilder, headers::url::URL};
 
 fn main() {
     // Build a multipart message with text and HTML bodies,

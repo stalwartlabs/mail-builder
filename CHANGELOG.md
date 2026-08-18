@@ -1,3 +1,10 @@
+mail-builder 0.5.0
+================================
+- Breaking: The `base64_encode`, `base64_encode_mime`, `get_encoding_type`, `rfc2047_encode`, `quoted_printable_encode`, `quoted_printable_encode_byte` and `inline_quoted_printable_encode` functions are no longer public. Use the new `Base64Encoder` and `QuotedPrintableEncoder` types instead (#50).
+- Breaking: `EncodingType` is no longer part of the public API.
+- Breaking: Updated to Rust edition 2024, which requires Rust 1.85 or later.
+- Fix: Display names are no longer wrapped in a quoted-string when RFC 2047 encoded, and `Q`-encoded phrases now escape all characters outside the restricted set.
+
 mail-builder 0.4.4
 ================================
 - Do not split UTF-8 characters between encoded-words (#41)

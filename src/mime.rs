@@ -17,11 +17,11 @@ use std::{
 use crate::{
     encoders::{
         base64::base64_encode_mime,
-        encode::{get_encoding_type, EncodingType},
+        encode::{EncodingType, get_encoding_type},
         quoted_printable::quoted_printable_encode,
     },
     headers::{
-        content_type::ContentType, message_id::MessageId, raw::Raw, text::Text, Header, HeaderType,
+        Header, HeaderType, content_type::ContentType, message_id::MessageId, raw::Raw, text::Text,
     },
 };
 

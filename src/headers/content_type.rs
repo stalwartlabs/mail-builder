@@ -4,11 +4,9 @@
  * SPDX-License-Identifier: Apache-2.0 OR MIT
  */
 
-use std::borrow::Cow;
-
-use crate::encoders::encode::rfc2047_encode;
-
 use super::Header;
+use crate::encoders::encode::rfc2047_encode;
+use std::borrow::Cow;
 
 /// MIME Content-Type or Content-Disposition header
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
@@ -75,5 +73,31 @@ impl Header for ContentType<'_> {
         }
         output.write_all(b"\r\n")?;
         Ok(0)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn build(content_type: ContentType<'_>) -> String {
+        let mut output = Vec::new();
+        content_type.write_header(&mut output, 14).unwrap();
+        String::from_utf8(output).unwrap()
+    }
+
+    #[test]
+    fn encoded_parameter_value_stays_quoted() {
+        let header =
+            build(ContentType::new("attachment").attribute("filename", "Jahresabschluß, 2024.pdf"));
+        assert!(header.contains("filename=\"=?"), "{header:?}");
+        assert!(header.contains("?=\""), "{header:?}");
+    }
+
+    #[test]
+    fn plain_parameter_value_is_quoted_and_escaped() {
+        let header =
+            build(ContentType::new("attachment").attribute("filename", "report \"final\".pdf"));
+        assert!(header.contains(r#""report \"final\".pdf""#), "{header:?}");
     }
 }

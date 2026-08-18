@@ -27,6 +27,38 @@ pub(crate) fn quoted_printable_encode_byte(ch: u8, output: &mut impl Write) -> i
     }
 }
 
+#[inline]
+pub(crate) fn quoted_printable_encode_phrase_byte(
+    ch: u8,
+    output: &mut impl Write,
+) -> io::Result<usize> {
+    match ch {
+        b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'!' | b'*' | b'+' | b'-' | b'/' => {
+            output.write_all(&[ch])?;
+            Ok(1)
+        }
+        b' ' => {
+            output.write_all(b"_")?;
+            Ok(1)
+        }
+        _ => {
+            output.write_all(format!("={:02X}", ch).as_bytes())?;
+            Ok(3)
+        }
+    }
+}
+
+pub(crate) fn phrase_quoted_printable_encode(
+    input: &[u8],
+    output: &mut impl Write,
+) -> io::Result<usize> {
+    let mut bytes_written = 0;
+    for &ch in input.iter() {
+        bytes_written += quoted_printable_encode_phrase_byte(ch, output)?;
+    }
+    Ok(bytes_written)
+}
+
 /// Encodes input according using the "Q" encoding from RFC 2047.
 pub(crate) fn inline_quoted_printable_encode(
     input: &[u8],

@@ -4,11 +4,13 @@
  * SPDX-License-Identifier: Apache-2.0 OR MIT
  */
 
+use super::{
+    base64::base64_encode_mime,
+    quoted_printable::{inline_quoted_printable_encode, phrase_quoted_printable_encode},
+};
 use std::io::{self, Write};
 
-use super::{base64::base64_encode_mime, quoted_printable::inline_quoted_printable_encode};
-
-pub enum EncodingType {
+pub(crate) enum EncodingType {
     Base64,
     QuotedPrintable(bool),
     None,
@@ -79,6 +81,23 @@ pub(crate) fn get_encoding_type(input: &[u8], is_inline: bool, is_body: bool) ->
     }
 }
 
+fn quoted_string_encode(input: &str, mut output: impl Write) -> io::Result<usize> {
+    let mut bytes_written = 2;
+    output.write_all(b"\"")?;
+    for &ch in input.as_bytes() {
+        if ch == b'\\' || ch == b'"' {
+            output.write_all(b"\\")?;
+            bytes_written += 1;
+        } else if ch == b'\r' || ch == b'\n' {
+            continue;
+        }
+        output.write_all(&[ch])?;
+        bytes_written += 1;
+    }
+    output.write_all(b"\"")?;
+    Ok(bytes_written)
+}
+
 pub(crate) fn rfc2047_encode(input: &str, mut output: impl Write) -> io::Result<usize> {
     Ok(match get_encoding_type(input.as_bytes(), true, false) {
         EncodingType::Base64 => {
@@ -88,31 +107,41 @@ pub(crate) fn rfc2047_encode(input: &str, mut output: impl Write) -> io::Result<
             bytes_written
         }
         EncodingType::QuotedPrintable(is_ascii) => {
-            if !is_ascii {
-                output.write_all(b"\"=?utf-8?Q?")?;
+            let prefix: &[u8] = if is_ascii {
+                b"\"=?us-ascii?Q?"
             } else {
-                output.write_all(b"\"=?us-ascii?Q?")?;
-            }
-            let bytes_written = inline_quoted_printable_encode(input.as_bytes(), &mut output)?
-                + if is_ascii { 19 } else { 14 };
+                b"\"=?utf-8?Q?"
+            };
+            output.write_all(prefix)?;
+            let bytes_written =
+                inline_quoted_printable_encode(input.as_bytes(), &mut output)? + prefix.len() + 3;
             output.write_all(b"?=\"")?;
             bytes_written
         }
-        EncodingType::None => {
-            let mut bytes_written = 2;
-            output.write_all(b"\"")?;
-            for &ch in input.as_bytes() {
-                if ch == b'\\' || ch == b'"' {
-                    output.write_all(b"\\")?;
-                    bytes_written += 1;
-                } else if ch == b'\r' || ch == b'\n' {
-                    continue;
-                }
-                output.write_all(&[ch])?;
-                bytes_written += 1;
-            }
-            output.write_all(b"\"")?;
+        EncodingType::None => quoted_string_encode(input, &mut output)?,
+    })
+}
+
+pub(crate) fn rfc2047_encode_phrase(input: &str, mut output: impl Write) -> io::Result<usize> {
+    Ok(match get_encoding_type(input.as_bytes(), true, false) {
+        EncodingType::Base64 => {
+            output.write_all(b"=?utf-8?B?")?;
+            let bytes_written = base64_encode_mime(input.as_bytes(), &mut output, true)? + 12;
+            output.write_all(b"?=")?;
             bytes_written
         }
+        EncodingType::QuotedPrintable(is_ascii) => {
+            let prefix: &[u8] = if is_ascii {
+                b"=?us-ascii?Q?"
+            } else {
+                b"=?utf-8?Q?"
+            };
+            output.write_all(prefix)?;
+            let bytes_written =
+                phrase_quoted_printable_encode(input.as_bytes(), &mut output)? + prefix.len() + 2;
+            output.write_all(b"?=")?;
+            bytes_written
+        }
+        EncodingType::None => quoted_string_encode(input, &mut output)?,
     })
 }

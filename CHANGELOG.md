@@ -1,3 +1,14 @@
+mail-builder 0.6.0
+================================
+- Breaking: Serialization writes into the new `Writer` sink (implemented for `Vec<u8>`, with `IoWriter` adapting any `std::io::Write`). `Header::write_header` now takes `&mut impl Writer` and a column, `MimePart::write_part` takes `&mut impl Writer`, and `generate_message_id_header` takes `&mut impl Writer` and returns nothing. `MessageBuilder::write_to`, `write_body`, `write_to_vec` and `write_to_string` are unchanged; `serialize` and `serialize_body` write into any `Writer`.
+- Breaking: Requires Rust 1.88 or later.
+- Added `base64_encode_slice` and `base64_encoded_len` (allocation-free base64 primitive, 2 to 3 times faster than the previous encoder), `Base64Encoder::encode_into`, `QuotedPrintableEncoder::encode_into`, `Date::write_rfc822` and `mime::write_boundary`.
+- Performance: base64, quoted-printable, 7bit and header serialization rewritten to work on runs instead of bytes; no `format!` or per-byte writer calls remain on the serialization path; fixed per-message costs (hostname lookup, boundary generation, date formatting, output growth) removed.
+- Changed: Header folding follows RFC 5322 and RFC 2047 (folds are CRLF followed by whitespace, no trailing whitespace before a fold, encoded-words at most 75 characters and never split inside a UTF-8 character); nested address lists are flattened instead of panicking; empty Message-ID and URL lists still terminate the header; quoted-printable lines are at most 76 characters including the soft line break; dates before 1970 are formatted correctly.
+- Changed: Boundaries keep their shape but are generated from a per-thread counter instead of a hash of the thread id; the hostname used for generated Message-IDs is read once per process.
+- Fix: Bare CR or LF in display names, group names, subjects, raw header values and parameter values can no longer reach the output.
+- Fix: A raw multipart `Content-Type` header value that already contains `boundary="` is written instead of being dropped, and multipart parts with an unexpected `Content-Type` header value no longer panic.
+
 mail-builder 0.5.0
 ================================
 - Breaking: The `base64_encode`, `base64_encode_mime`, `get_encoding_type`, `rfc2047_encode`, `quoted_printable_encode`, `quoted_printable_encode_byte` and `inline_quoted_printable_encode` functions are no longer public. Use the new `Base64Encoder` and `QuotedPrintableEncoder` types instead (#50).

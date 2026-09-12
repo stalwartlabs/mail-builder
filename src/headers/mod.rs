@@ -7,20 +7,25 @@
 pub mod address;
 pub mod content_type;
 pub mod date;
+pub(crate) mod fold;
 pub mod message_id;
 pub mod raw;
+pub(crate) mod rfc2047;
+#[cfg(test)]
+mod roundtrip;
 pub mod text;
 pub mod url;
-
-use std::io::{self, Write};
 
 use self::{
     address::Address, content_type::ContentType, date::Date, message_id::MessageId, raw::Raw,
     text::Text, url::URL,
 };
+use crate::writer::Writer;
 
 pub trait Header {
-    fn write_header(&self, output: impl Write, bytes_written: usize) -> io::Result<usize>;
+    /// Writes the header value followed by CRLF. `column` is the number of
+    /// bytes already on the current line, normally the header name plus ": ".
+    fn write_header(&self, output: &mut impl Writer, column: usize);
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
@@ -74,15 +79,15 @@ impl<'x> From<URL<'x>> for HeaderType<'x> {
 }
 
 impl Header for HeaderType<'_> {
-    fn write_header(&self, output: impl Write, bytes_written: usize) -> io::Result<usize> {
+    fn write_header(&self, output: &mut impl Writer, column: usize) {
         match self {
-            HeaderType::Address(value) => value.write_header(output, bytes_written),
-            HeaderType::Date(value) => value.write_header(output, bytes_written),
-            HeaderType::MessageId(value) => value.write_header(output, bytes_written),
-            HeaderType::Raw(value) => value.write_header(output, bytes_written),
-            HeaderType::Text(value) => value.write_header(output, bytes_written),
-            HeaderType::URL(value) => value.write_header(output, bytes_written),
-            HeaderType::ContentType(value) => value.write_header(output, bytes_written),
+            HeaderType::Address(value) => value.write_header(output, column),
+            HeaderType::Date(value) => value.write_header(output, column),
+            HeaderType::MessageId(value) => value.write_header(output, column),
+            HeaderType::Raw(value) => value.write_header(output, column),
+            HeaderType::Text(value) => value.write_header(output, column),
+            HeaderType::URL(value) => value.write_header(output, column),
+            HeaderType::ContentType(value) => value.write_header(output, column),
         }
     }
 }

@@ -6,15 +6,19 @@
 
 #![doc = include_str!("../README.md")]
 #![deny(rust_2018_idioms)]
-#[forbid(unsafe_code)]
+#![forbid(unsafe_code)]
 pub mod encoders;
 pub mod headers;
 pub mod mime;
+pub mod writer;
 
 use std::{
     borrow::Cow,
     io::{self, Write},
 };
+
+#[cfg(feature = "gethostname")]
+use std::sync::OnceLock;
 
 use headers::{
     Header, HeaderType,
@@ -24,7 +28,35 @@ use headers::{
     message_id::{MessageId, generate_message_id_header},
     text::Text,
 };
-use mime::{BodyPart, MimePart};
+use mime::{BodyPart, MimePart, estimated_headers_len, write_header_name};
+use writer::{IO_BUFFER_MAX, IO_BUFFER_MIN};
+pub use writer::{IoWriter, Writer};
+
+const GENERATED_HEADERS_ESTIMATE: usize = 160;
+
+#[inline(always)]
+fn buffer_len(estimate: usize) -> usize {
+    estimate.clamp(IO_BUFFER_MIN, IO_BUFFER_MAX)
+}
+const MESSAGE_ESTIMATE_FLOOR: usize = 256;
+const BOUNDARY_OVERHEAD: usize = 128;
+
+#[cfg(feature = "gethostname")]
+fn local_hostname() -> &'static str {
+    static HOSTNAME: OnceLock<String> = OnceLock::new();
+    HOSTNAME
+        .get_or_init(|| {
+            gethostname::gethostname()
+                .into_string()
+                .unwrap_or_else(|_| "localhost".to_string())
+        })
+        .as_str()
+}
+
+#[cfg(not(feature = "gethostname"))]
+fn local_hostname() -> &'static str {
+    "localhost"
+}
 
 /// Builds an RFC5322 compliant MIME email message.
 #[derive(Clone, Debug)]
@@ -185,8 +217,10 @@ impl<'x> MessageBuilder<'x> {
         self
     }
 
-    /// Build the message.
-    pub fn write_to(self, mut output: impl Write) -> io::Result<()> {
+    /// Build the message into any [`Writer`], such as a `Vec<u8>`.
+    pub fn serialize(self, output: &mut impl Writer) {
+        output.reserve(self.estimated_len());
+
         let mut has_date = false;
         let mut has_message_id = false;
         let mut has_mime_version = false;
@@ -200,41 +234,70 @@ impl<'x> MessageBuilder<'x> {
                 has_mime_version = true;
             }
 
-            output.write_all(header_name.as_bytes())?;
-            output.write_all(b": ")?;
-            header_value.write_header(&mut output, header_name.len() + 2)?;
+            write_header_name(header_name, output);
+            header_value.write_header(output, header_name.len() + 2);
         }
 
         if !has_message_id {
-            output.write_all(b"Message-ID: ")?;
-
-            #[cfg(feature = "gethostname")]
-            generate_message_id_header(
-                &mut output,
-                gethostname::gethostname().to_str().unwrap_or("localhost"),
-            )?;
-
-            #[cfg(not(feature = "gethostname"))]
-            generate_message_id_header(&mut output, "localhost")?;
-
-            output.write_all(b"\r\n")?;
+            output.write(b"Message-ID: ");
+            generate_message_id_header(output, local_hostname());
+            output.write(b"\r\n");
         }
 
         if !has_date {
-            output.write_all(b"Date: ")?;
-            output.write_all(Date::now().to_rfc822().as_bytes())?;
-            output.write_all(b"\r\n")?;
+            output.write(b"Date: ");
+            Date::now().write_rfc822(output);
+            output.write(b"\r\n");
         }
 
         if !has_mime_version {
-            output.write_all(b"MIME-Version: 1.0\r\n")?;
+            output.write(b"MIME-Version: 1.0\r\n");
         }
 
-        self.write_body(output)
+        self.write_body_parts(output)
     }
 
-    /// Write the message body without headers.
-    pub fn write_body(self, output: impl Write) -> io::Result<()> {
+    fn estimated_len(&self) -> usize {
+        estimated_headers_len(&self.headers)
+            + GENERATED_HEADERS_ESTIMATE
+            + self.estimated_body_len()
+    }
+
+    fn estimated_body_len(&self) -> usize {
+        let estimate = match &self.body {
+            Some(body) => body.estimated_len(),
+            None => {
+                let mut estimate = 0;
+                let mut parts = 0;
+                for part in [self.text_body.as_ref(), self.html_body.as_ref()]
+                    .into_iter()
+                    .flatten()
+                {
+                    estimate += part.estimated_len() + BOUNDARY_OVERHEAD;
+                    parts += 1;
+                }
+                if let Some(attachments) = &self.attachments {
+                    for part in attachments {
+                        estimate += part.estimated_len() + BOUNDARY_OVERHEAD;
+                    }
+                    parts += attachments.len();
+                }
+                if parts > 1 {
+                    estimate += GENERATED_HEADERS_ESTIMATE;
+                }
+                estimate
+            }
+        };
+        estimate.max(MESSAGE_ESTIMATE_FLOOR)
+    }
+
+    /// Build the message body without headers into any [`Writer`].
+    pub fn serialize_body(self, output: &mut impl Writer) {
+        output.reserve(self.estimated_body_len());
+        self.write_body_parts(output)
+    }
+
+    fn write_body_parts(self, output: &mut impl Writer) {
         (if let Some(body) = self.body {
             body
         } else {
@@ -267,22 +330,34 @@ impl<'x> MessageBuilder<'x> {
                 (None, None, None) => MimePart::new("text/plain", "\n"),
             }
         })
-        .write_part(output)?;
+        .write_part(output);
+    }
 
-        Ok(())
+    /// Build the message and stream it to a [`std::io::Write`].
+    pub fn write_to(self, output: impl Write) -> io::Result<()> {
+        let mut writer = IoWriter::with_capacity(buffer_len(self.estimated_len()), output);
+        self.serialize(&mut writer);
+        writer.into_result()
+    }
+
+    /// Write the message body without headers to a [`std::io::Write`].
+    pub fn write_body(self, output: impl Write) -> io::Result<()> {
+        let mut writer = IoWriter::with_capacity(buffer_len(self.estimated_body_len()), output);
+        self.serialize_body(&mut writer);
+        writer.into_result()
     }
 
     /// Build message to a Vec<u8>.
     pub fn write_to_vec(self) -> io::Result<Vec<u8>> {
-        let mut output = Vec::new();
-        self.write_to(&mut output)?;
+        let mut output = Vec::with_capacity(self.estimated_len());
+        self.serialize(&mut output);
         Ok(output)
     }
 
     /// Build message to a String.
     pub fn write_to_string(self) -> io::Result<String> {
-        let mut output = Vec::new();
-        self.write_to(&mut output)?;
+        let mut output = Vec::with_capacity(self.estimated_len());
+        self.serialize(&mut output);
         String::from_utf8(output).map_err(io::Error::other)
     }
 }
@@ -368,7 +443,6 @@ mod tests {
             .write_to_vec()
             .unwrap();
         MessageParser::new().parse(&output).unwrap();
-        //fs::write("test.yaml", &serde_yaml::to_string(&message).unwrap()).unwrap();
     }
 
     #[test]

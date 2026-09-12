@@ -4,25 +4,18 @@
  * SPDX-License-Identifier: Apache-2.0 OR MIT
  */
 
-use std::{
-    borrow::Cow,
-    cell::Cell,
-    collections::hash_map::DefaultHasher,
-    hash::{Hash, Hasher},
-    io::{self, Write},
-    thread,
-    time::{Duration, SystemTime, UNIX_EPOCH},
-};
-
 use crate::{
-    encoders::{
-        base64::base64_encode_mime,
-        encode::{EncodingType, get_encoding_type},
-        quoted_printable::quoted_printable_encode,
-    },
+    encoders::{base64::base64_encode_wrapped, encode::write_encoded_body},
     headers::{
         Header, HeaderType, content_type::ContentType, message_id::MessageId, raw::Raw, text::Text,
     },
+    writer::Writer,
+};
+use std::{
+    borrow::Cow,
+    cell::Cell,
+    sync::atomic::{AtomicU64, Ordering},
+    time::{SystemTime, UNIX_EPOCH},
 };
 
 /// MIME part of an e-mail.
@@ -99,29 +92,102 @@ impl<'x> From<&'x String> for ContentType<'x> {
     }
 }
 
-thread_local!(static COUNTER: Cell<u64> = const { Cell::new(0) });
+const HEX_DIGITS: &[u8; 16] = b"0123456789abcdef";
+const GOLDEN_RATIO: u64 = 0x9E37_79B9_7F4A_7C15;
+const BOUNDARY_HEX_LEN: usize = 16;
+
+thread_local!(static BOUNDARY_STATE: Cell<(u64, u64)> = const { Cell::new((0, 0)) });
+static THREAD_SEQUENCE: AtomicU64 = AtomicU64::new(0);
+static PROCESS_ENTROPY: AtomicU64 = AtomicU64::new(0);
+
+#[inline(always)]
+fn splitmix64(seed: u64) -> u64 {
+    let mut z = seed;
+    z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+    z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+    z ^ (z >> 31)
+}
+
+#[inline(always)]
+fn push_hex(buffer: &mut [u8; BOUNDARY_HEX_LEN], end: usize, mut value: u64) -> usize {
+    let mut at = end;
+    while let Some(next) = at.checked_sub(1) {
+        at = next;
+        if let Some(slot) = buffer.get_mut(at) {
+            *slot = HEX_DIGITS[(value & 15) as usize];
+        }
+        value >>= 4;
+        if value == 0 {
+            break;
+        }
+    }
+    at
+}
+
+#[inline]
+fn unix_nanos() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |elapsed| elapsed.as_nanos() as u64)
+}
+
+fn process_entropy(address: u64, nanos: u64) -> u64 {
+    let known = PROCESS_ENTROPY.load(Ordering::Relaxed);
+    if known != 0 {
+        return known;
+    }
+    let candidate = splitmix64(address ^ nanos.rotate_left(17)) | 1;
+    match PROCESS_ENTROPY.compare_exchange(0, candidate, Ordering::Relaxed, Ordering::Relaxed) {
+        Ok(_) => candidate,
+        Err(existing) => existing,
+    }
+}
+
+#[inline]
+fn boundary_fields() -> (u64, u64, u64) {
+    let nanos = unix_nanos();
+    BOUNDARY_STATE.with(|state| {
+        let (mut thread_seed, counter) = state.get();
+        if thread_seed == 0 {
+            let address = std::ptr::from_ref(state) as usize as u64;
+            let sequence = THREAD_SEQUENCE.fetch_add(1, Ordering::Relaxed);
+            thread_seed = splitmix64(sequence) ^ process_entropy(address, nanos);
+            if thread_seed == 0 {
+                thread_seed = GOLDEN_RATIO;
+            }
+        }
+        let counter = counter.wrapping_add(1);
+        state.set((thread_seed, counter));
+        (
+            nanos,
+            splitmix64(thread_seed ^ counter.wrapping_mul(GOLDEN_RATIO)),
+            thread_seed,
+        )
+    })
+}
+
+/// Writes a pseudo-unique MIME boundary without allocating.
+///
+/// The three hexadecimal fields are only guaranteed distinct as a triple,
+/// so `separator` should be a non-empty string without hexadecimal digits.
+pub fn write_boundary(output: &mut impl Writer, separator: &str) {
+    let (nanos, unique, thread_seed) = boundary_fields();
+
+    let mut buffer = [0u8; BOUNDARY_HEX_LEN];
+    let at = push_hex(&mut buffer, BOUNDARY_HEX_LEN, nanos);
+    output.write(buffer.get(at..).unwrap_or_default());
+    output.write(separator.as_bytes());
+    let at = push_hex(&mut buffer, BOUNDARY_HEX_LEN, unique);
+    output.write(buffer.get(at..).unwrap_or_default());
+    output.write(separator.as_bytes());
+    let at = push_hex(&mut buffer, BOUNDARY_HEX_LEN, thread_seed);
+    output.write(buffer.get(at..).unwrap_or_default());
+}
 
 pub fn make_boundary(separator: &str) -> String {
-    // Create a pseudo-unique boundary
-    let mut s = DefaultHasher::new();
-    ((&s as *const DefaultHasher) as usize).hash(&mut s);
-    thread::current().id().hash(&mut s);
-    let hash = s.finish();
-
-    format!(
-        "{:x}{}{:x}{}{:x}",
-        SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or_else(|_| Duration::new(0, 0))
-            .as_nanos(),
-        separator,
-        COUNTER.with(|c| {
-            hash.wrapping_add(c.replace(c.get() + 1))
-                .wrapping_mul(11400714819323198485u64)
-        }),
-        separator,
-        hash,
-    )
+    let mut boundary = Vec::with_capacity(BOUNDARY_HEX_LEN * 3 + separator.len() * 2);
+    write_boundary(&mut boundary, separator);
+    String::from_utf8(boundary).unwrap_or_default()
 }
 
 impl<'x> MimePart<'x> {
@@ -134,15 +200,16 @@ impl<'x> MimePart<'x> {
         let contents = contents.into();
 
         if matches!(contents, BodyPart::Text(_)) && content_type.attributes.is_empty() {
+            content_type.attributes.reserve_exact(1);
             content_type
                 .attributes
                 .push((Cow::from("charset"), Cow::from("utf-8")));
         }
 
-        Self {
-            contents,
-            headers: vec![("Content-Type".into(), content_type.into())],
-        }
+        let mut headers = Vec::with_capacity(2);
+        headers.push((Cow::from("Content-Type"), content_type.into()));
+
+        Self { contents, headers }
     }
 
     /// Create a new raw MIME part that includes both headers and body.
@@ -220,6 +287,34 @@ impl<'x> MimePart<'x> {
         }
     }
 
+    pub(crate) fn estimated_len(&self) -> usize {
+        self.estimated_len_at_depth(0)
+    }
+
+    fn estimated_len_at_depth(&self, depth: usize) -> usize {
+        let headers = estimated_headers_len(&self.headers);
+        match &self.contents {
+            BodyPart::Text(text) => headers
+                .saturating_add(base64_len(text.len()))
+                .saturating_add(LEAF_OVERHEAD),
+            BodyPart::Binary(binary) => headers
+                .saturating_add(base64_len(binary.len()))
+                .saturating_add(LEAF_OVERHEAD),
+            BodyPart::Multipart(parts) if depth < MAX_ESTIMATE_DEPTH => {
+                parts
+                    .iter()
+                    .fold(headers.saturating_add(MULTIPART_OVERHEAD), |total, part| {
+                        total
+                            .saturating_add(part.estimated_len_at_depth(depth + 1))
+                            .saturating_add(BOUNDARY_OVERHEAD)
+                    })
+            }
+            BodyPart::Multipart(parts) => headers
+                .saturating_add(MULTIPART_OVERHEAD)
+                .saturating_add(parts.len().saturating_mul(BOUNDARY_OVERHEAD)),
+        }
+    }
+
     /// Add a body part to a multipart/* MIME part.
     pub fn add_part(&mut self, part: MimePart<'x>) {
         if let BodyPart::Multipart(ref mut parts) = self.contents {
@@ -228,195 +323,205 @@ impl<'x> MimePart<'x> {
     }
 
     /// Write the MIME part to a writer.
-    pub fn write_part(self, mut output: impl Write) -> io::Result<usize> {
-        let mut stack = Vec::new();
-        let mut it = vec![self].into_iter();
-        let mut boundary: Option<Cow<'_, str>> = None;
+    pub fn write_part(self, output: &mut impl Writer) {
+        let children = match self.contents {
+            BodyPart::Text(text) => {
+                return write_leaf_part(&self.headers, text.as_bytes(), true, output);
+            }
+            BodyPart::Binary(binary) => {
+                return write_leaf_part(&self.headers, binary.as_ref(), false, output);
+            }
+            BodyPart::Multipart(children) => children,
+        };
+
+        let mut boundary = write_multipart_headers(self.headers, output);
+        let mut parts = children.into_iter();
+        let mut stack: Vec<(std::vec::IntoIter<MimePart<'x>>, Cow<'x, str>)> = Vec::new();
 
         loop {
-            while let Some(part) = it.next() {
-                if let Some(boundary) = boundary.as_ref() {
-                    output.write_all(b"\r\n--")?;
-                    output.write_all(boundary.as_bytes())?;
-                    output.write_all(b"\r\n")?;
-                }
+            while let Some(part) = parts.next() {
+                output.write(b"\r\n--");
+                output.write(boundary.as_bytes());
+                output.write(b"\r\n");
+
                 match part.contents {
                     BodyPart::Text(text) => {
-                        let mut is_attachment = false;
-                        let mut is_raw = part.headers.is_empty();
-
-                        for (header_name, header_value) in &part.headers {
-                            output.write_all(header_name.as_bytes())?;
-                            output.write_all(b": ")?;
-                            if !is_attachment && header_name == "Content-Disposition" {
-                                is_attachment = header_value
-                                    .as_content_type()
-                                    .map(|v| v.is_attachment())
-                                    .unwrap_or(false);
-                            } else if !is_raw && header_name == "Content-Transfer-Encoding" {
-                                is_raw = true;
-                            }
-                            header_value.write_header(&mut output, header_name.len() + 2)?;
-                        }
-                        if !is_raw {
-                            detect_encoding(text.as_bytes(), &mut output, !is_attachment)?;
-                        } else {
-                            if !part.headers.is_empty() {
-                                output.write_all(b"\r\n")?;
-                            }
-                            output.write_all(text.as_bytes())?;
-                        }
+                        write_leaf_part(&part.headers, text.as_bytes(), true, output);
                     }
                     BodyPart::Binary(binary) => {
-                        let mut is_text = false;
-                        let mut is_attachment = false;
-                        let mut is_raw = part.headers.is_empty();
-
-                        for (header_name, header_value) in &part.headers {
-                            output.write_all(header_name.as_bytes())?;
-                            output.write_all(b": ")?;
-                            if !is_text && header_name == "Content-Type" {
-                                is_text = header_value
-                                    .as_content_type()
-                                    .map(|v| v.is_text())
-                                    .unwrap_or(false);
-                            } else if !is_attachment && header_name == "Content-Disposition" {
-                                is_attachment = header_value
-                                    .as_content_type()
-                                    .map(|v| v.is_attachment())
-                                    .unwrap_or(false);
-                            } else if !is_raw && header_name == "Content-Transfer-Encoding" {
-                                is_raw = true;
-                            }
-                            header_value.write_header(&mut output, header_name.len() + 2)?;
-                        }
-
-                        if !is_raw {
-                            if !is_text {
-                                output.write_all(b"Content-Transfer-Encoding: base64\r\n\r\n")?;
-                                base64_encode_mime(binary.as_ref(), &mut output, false)?;
-                            } else {
-                                detect_encoding(binary.as_ref(), &mut output, !is_attachment)?;
-                            }
-                        } else {
-                            if !part.headers.is_empty() {
-                                output.write_all(b"\r\n")?;
-                            }
-                            output.write_all(binary.as_ref())?;
-                        }
+                        write_leaf_part(&part.headers, binary.as_ref(), false, output);
                     }
-                    BodyPart::Multipart(parts) => {
-                        if boundary.is_some() {
-                            stack.push((it, boundary.take()));
-                        }
-
-                        let mut found_ct = false;
-                        for (header_name, header_value) in part.headers {
-                            output.write_all(header_name.as_bytes())?;
-                            output.write_all(b": ")?;
-
-                            if !found_ct && header_name.eq_ignore_ascii_case("Content-Type") {
-                                boundary = match header_value {
-                                    HeaderType::ContentType(mut ct) => {
-                                        let bpos = if let Some(pos) = ct
-                                            .attributes
-                                            .iter()
-                                            .position(|(a, _)| a.eq_ignore_ascii_case("boundary"))
-                                        {
-                                            pos
-                                        } else {
-                                            let pos = ct.attributes.len();
-                                            ct.attributes.push((
-                                                "boundary".into(),
-                                                make_boundary("_").into(),
-                                            ));
-                                            pos
-                                        };
-                                        ct.write_header(&mut output, 14)?;
-                                        ct.attributes.swap_remove(bpos).1.into()
-                                    }
-                                    HeaderType::Raw(raw) => {
-                                        if let Some(pos) = raw.raw.find("boundary=\"") {
-                                            if let Some(boundary) = raw.raw[pos..].split('"').nth(1)
-                                            {
-                                                Some(boundary.to_string().into())
-                                            } else {
-                                                Some(make_boundary("_").into())
-                                            }
-                                        } else {
-                                            let boundary = make_boundary("_");
-                                            output.write_all(raw.raw.as_bytes())?;
-                                            output.write_all(b"; boundary=\"")?;
-                                            output.write_all(boundary.as_bytes())?;
-                                            output.write_all(b"\"\r\n")?;
-                                            Some(boundary.into())
-                                        }
-                                    }
-                                    _ => panic!("Unsupported Content-Type header value."),
-                                };
-                                found_ct = true;
-                            } else {
-                                header_value.write_header(&mut output, header_name.len() + 2)?;
-                            }
-                        }
-
-                        if !found_ct {
-                            output.write_all(b"Content-Type: ")?;
-                            let boundary_ = make_boundary("_");
-                            ContentType::new("multipart/mixed")
-                                .attribute("boundary", &boundary_)
-                                .write_header(&mut output, 14)?;
-                            boundary = Some(boundary_.into());
-                        }
-
-                        output.write_all(b"\r\n")?;
-                        it = parts.into_iter();
+                    BodyPart::Multipart(children) => {
+                        stack.push((parts, boundary));
+                        boundary = write_multipart_headers(part.headers, output);
+                        parts = children.into_iter();
                     }
                 }
             }
-            if let Some(boundary) = boundary {
-                output.write_all(b"\r\n--")?;
-                output.write_all(boundary.as_bytes())?;
-                output.write_all(b"--\r\n")?;
-            }
-            if let Some((prev_it, prev_boundary)) = stack.pop() {
-                it = prev_it;
-                boundary = prev_boundary;
-            } else {
-                break;
+
+            output.write(b"\r\n--");
+            output.write(boundary.as_bytes());
+            output.write(b"--\r\n");
+
+            match stack.pop() {
+                Some((previous_parts, previous_boundary)) => {
+                    parts = previous_parts;
+                    boundary = previous_boundary;
+                }
+                None => return,
             }
         }
-        Ok(0)
     }
 }
 
-fn detect_encoding(input: &[u8], mut output: impl Write, is_body: bool) -> io::Result<()> {
-    match get_encoding_type(input, false, is_body) {
-        EncodingType::Base64 => {
-            output.write_all(b"Content-Transfer-Encoding: base64\r\n\r\n")?;
-            base64_encode_mime(input, &mut output, false)?;
+const MAX_ESTIMATE_DEPTH: usize = 32;
+const LEAF_OVERHEAD: usize = 96;
+const MULTIPART_OVERHEAD: usize = 128;
+const BOUNDARY_OVERHEAD: usize = 64;
+
+#[inline(always)]
+pub(crate) fn base64_len(len: usize) -> usize {
+    let encoded = len.div_ceil(3).saturating_mul(4);
+    encoded.saturating_add(encoded.div_ceil(76).saturating_mul(2))
+}
+
+pub(crate) fn estimated_headers_len(headers: &[(Cow<'_, str>, HeaderType<'_>)]) -> usize {
+    headers
+        .iter()
+        .map(|(name, _)| name.len() + HEADER_VALUE_ESTIMATE)
+        .sum()
+}
+
+const HEADER_VALUE_ESTIMATE: usize = 64;
+
+fn write_leaf_part(
+    headers: &[(Cow<'_, str>, HeaderType<'_>)],
+    body: &[u8],
+    is_text_body: bool,
+    output: &mut impl Writer,
+) {
+    let mut is_text = is_text_body;
+    let mut is_attachment = false;
+    let mut is_raw = headers.is_empty();
+
+    for (header_name, header_value) in headers {
+        write_header_name(header_name, output);
+
+        if !is_text && header_name == "Content-Type" {
+            is_text = header_value
+                .as_content_type()
+                .is_some_and(|value| value.is_text());
+        } else if !is_attachment && header_name == "Content-Disposition" {
+            is_attachment = header_value
+                .as_content_type()
+                .is_some_and(|value| value.is_attachment());
+        } else if !is_raw && header_name == "Content-Transfer-Encoding" {
+            is_raw = true;
         }
-        EncodingType::QuotedPrintable(_) => {
-            output.write_all(b"Content-Transfer-Encoding: quoted-printable\r\n\r\n")?;
-            quoted_printable_encode(input, &mut output, is_body)?;
+
+        header_value.write_header(output, header_name.len() + 2);
+    }
+
+    if !is_raw {
+        if is_text {
+            write_encoded_body(body, output, !is_attachment);
+        } else {
+            output.write(b"Content-Transfer-Encoding: base64\r\n\r\n");
+            base64_encode_wrapped(body, output);
         }
-        EncodingType::None => {
-            output.write_all(b"Content-Transfer-Encoding: 7bit\r\n\r\n")?;
-            if is_body {
-                let mut prev_ch = 0;
-                for ch in input {
-                    if *ch == b'\n' && prev_ch != b'\r' {
-                        output.write_all(b"\r")?;
-                    }
-                    output.write_all(&[*ch])?;
-                    prev_ch = *ch;
+    } else {
+        if !headers.is_empty() {
+            output.write(b"\r\n");
+        }
+        output.write(body);
+    }
+}
+
+fn write_multipart_headers<'x>(
+    headers: Vec<(Cow<'x, str>, HeaderType<'x>)>,
+    output: &mut impl Writer,
+) -> Cow<'x, str> {
+    let mut boundary: Option<Cow<'x, str>> = None;
+
+    for (header_name, header_value) in headers {
+        write_header_name(&header_name, output);
+
+        if boundary.is_none() && header_name.eq_ignore_ascii_case("Content-Type") {
+            boundary = Some(match header_value {
+                HeaderType::ContentType(mut content_type) => {
+                    let position = match content_type
+                        .attributes
+                        .iter()
+                        .position(|(attribute, _)| attribute.eq_ignore_ascii_case("boundary"))
+                    {
+                        Some(position) => position,
+                        None => {
+                            let position = content_type.attributes.len();
+                            content_type
+                                .attributes
+                                .push(("boundary".into(), make_boundary("_").into()));
+                            position
+                        }
+                    };
+                    content_type.write_header(output, 14);
+                    content_type.attributes.swap_remove(position).1
                 }
-            } else {
-                output.write_all(input)?;
-            }
+                HeaderType::Raw(raw) => raw_boundary(raw, output),
+                HeaderType::Text(text) => raw_boundary(Raw::new(text.text), output),
+                other => {
+                    other.write_header(output, header_name.len() + 2);
+                    continue;
+                }
+            });
+        } else {
+            header_value.write_header(output, header_name.len() + 2);
         }
     }
-    Ok(())
+
+    let boundary = boundary.unwrap_or_else(|| {
+        output.write(b"Content-Type: ");
+        let boundary = make_boundary("_");
+        ContentType::new("multipart/mixed")
+            .attribute("boundary", &boundary)
+            .write_header(output, 14);
+        boundary.into()
+    });
+
+    output.write(b"\r\n");
+    boundary
+}
+
+fn raw_boundary<'x>(raw: Raw<'x>, output: &mut impl Writer) -> Cow<'x, str> {
+    match raw.raw.find("boundary=\"") {
+        Some(position) => {
+            raw.write_header(output, 14);
+            match raw.raw {
+                Cow::Borrowed(value) => value
+                    .get(position..)
+                    .and_then(|tail| tail.split('"').nth(1))
+                    .map_or_else(|| make_boundary("_").into(), Cow::Borrowed),
+                Cow::Owned(value) => value
+                    .get(position..)
+                    .and_then(|tail| tail.split('"').nth(1))
+                    .map_or_else(|| make_boundary("_"), str::to_string)
+                    .into(),
+            }
+        }
+        None => {
+            let boundary = make_boundary("_");
+            output.write(raw.raw.as_bytes());
+            output.write(b"; boundary=\"");
+            output.write(boundary.as_bytes());
+            output.write(b"\"\r\n");
+            boundary.into()
+        }
+    }
+}
+
+#[inline(always)]
+pub(crate) fn write_header_name(name: &str, output: &mut impl Writer) {
+    output.write(name.as_bytes());
+    output.write(b": ");
 }
 
 #[cfg(test)]
@@ -424,36 +529,189 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_detect_encoding() {
+    fn unexpected_multipart_content_type_values_do_not_panic() {
         let mut output = Vec::new();
-        detect_encoding(b"a b c\r\n", &mut output, false).unwrap();
-        assert_eq!(output, b"Content-Transfer-Encoding: 7bit\r\n\r\na b c\r\n");
-
-        let mut output = Vec::new();
-        detect_encoding(
-            b"a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a\r\n",
-            &mut output,
-            false,
-        )
-        .unwrap();
-        assert_eq!(output, b"Content-Transfer-Encoding: 7bit\r\n\r\na a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a\r\n");
-
-        let mut output = Vec::new();
-        detect_encoding(
-            b"a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a\r\n",
-            &mut output,
-            false,
-        )
-        .unwrap();
-        assert_eq!(output, b"Content-Transfer-Encoding: quoted-printable\r\n\r\na a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a a =\r\na=0D=0A");
-
-        let mut output = Vec::new();
-        let long_line = "a".repeat(100);
-        detect_encoding(long_line.as_bytes(), &mut output, false).unwrap();
-        let expected = format!(
-            "Content-Transfer-Encoding: quoted-printable\r\n\r\n{}",
-            "a".repeat(76) + "=\r\n" + &"a".repeat(24)
+        MimePart::raw(vec![MimePart::new("text/plain", "hello")])
+            .header("Content-Type", Text::new("multipart/mixed"))
+            .write_part(&mut output);
+        let output = String::from_utf8(output).unwrap();
+        assert!(
+            output.starts_with("Content-Type: multipart/mixed; boundary=\""),
+            "{output:?}"
         );
-        assert_eq!(output, expected.as_bytes());
+        assert!(output.ends_with("--\r\n"), "{output:?}");
+
+        let mut output = Vec::new();
+        MimePart::raw(vec![MimePart::new("text/plain", "hello")])
+            .header("Content-Type", MessageId::new("id@example.org"))
+            .write_part(&mut output);
+        let output = String::from_utf8(output).unwrap();
+        assert!(
+            output.contains("Content-Type: multipart/mixed;") && output.contains("boundary=\""),
+            "{output:?}"
+        );
+    }
+
+    #[test]
+    fn raw_content_type_with_boundary_is_written_and_reused() {
+        let mut output = Vec::new();
+        MimePart::raw(vec![MimePart::new("text/plain", "hello")])
+            .header(
+                "Content-Type",
+                Raw::new("multipart/mixed; boundary=\"abc\""),
+            )
+            .write_part(&mut output);
+        let output = String::from_utf8(output).unwrap();
+        assert!(
+            output.starts_with(
+                "Content-Type: multipart/mixed; boundary=\"abc\"\r\n\r\n\r\n--abc\r\n"
+            ),
+            "{output:?}"
+        );
+        assert!(output.ends_with("\r\n--abc--\r\n"), "{output:?}");
+    }
+    use std::collections::HashSet;
+
+    fn is_boundary_safe(value: &str) -> bool {
+        value.bytes().all(|byte| {
+            byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'.' | b'-' | b'+' | b'=' | b':')
+        })
+    }
+
+    #[test]
+    fn hex_digits_match_the_formatter() {
+        for value in [
+            0u64,
+            1,
+            9,
+            10,
+            15,
+            16,
+            255,
+            256,
+            0xFFFF_FFFF,
+            0x1_0000_0000,
+            u64::MAX,
+            u64::MAX - 1,
+            0x0123_4567_89AB_CDEF,
+        ] {
+            let mut buffer = [0u8; BOUNDARY_HEX_LEN];
+            let at = push_hex(&mut buffer, BOUNDARY_HEX_LEN, value);
+            let digits = std::str::from_utf8(buffer.get(at..).unwrap_or_default()).unwrap();
+            assert_eq!(digits, format!("{value:x}"), "value {value}");
+        }
+    }
+
+    #[test]
+    fn boundary_keeps_its_shape() {
+        let boundary = make_boundary("_");
+        let fields = boundary.split('_').collect::<Vec<_>>();
+        assert_eq!(fields.len(), 3, "{boundary}");
+        assert!(
+            fields.iter().all(
+                |field| !field.is_empty() && field.bytes().all(|byte| byte.is_ascii_hexdigit())
+            ),
+            "{boundary}"
+        );
+        assert!(boundary.len() <= 70, "{boundary}");
+        assert!(is_boundary_safe(&boundary), "{boundary}");
+        let dotted = make_boundary(".");
+        assert_eq!(dotted.split('.').count(), 3, "{dotted}");
+        assert!(is_boundary_safe(&dotted), "{dotted}");
+        let long = make_boundary("_separator_");
+        assert_eq!(long.split("_separator_").count(), 3, "{long}");
+    }
+
+    #[test]
+    fn boundaries_are_unique_within_a_thread() {
+        let count = 1_000_000;
+        let mut seen = HashSet::with_capacity(count);
+        for _ in 0..count {
+            let boundary = make_boundary("_");
+            assert!(is_boundary_safe(&boundary), "{boundary}");
+            assert!(seen.insert(boundary), "duplicate boundary");
+        }
+        assert_eq!(seen.len(), count);
+    }
+
+    #[test]
+    fn boundaries_are_unique_across_threads() {
+        let per_thread = 50_000;
+        let threads = (0..8)
+            .map(|_| {
+                std::thread::spawn(move || {
+                    (0..per_thread)
+                        .map(|_| make_boundary("_"))
+                        .collect::<Vec<_>>()
+                })
+            })
+            .collect::<Vec<_>>();
+        let mut seen = HashSet::with_capacity(per_thread * 8);
+        for thread in threads {
+            for boundary in thread.join().expect("thread panicked") {
+                assert!(is_boundary_safe(&boundary), "{boundary}");
+                assert!(seen.insert(boundary), "duplicate boundary");
+            }
+        }
+        assert_eq!(seen.len(), per_thread * 8);
+    }
+
+    #[test]
+    fn message_id_boundaries_are_unique_across_threads() {
+        let per_thread = 20_000;
+        let threads = (0..8)
+            .map(|_| {
+                std::thread::spawn(move || {
+                    (0..per_thread)
+                        .map(|_| make_boundary("."))
+                        .collect::<Vec<_>>()
+                })
+            })
+            .collect::<Vec<_>>();
+        let mut seen = HashSet::with_capacity(per_thread * 8);
+        for thread in threads {
+            for boundary in thread.join().expect("thread panicked") {
+                assert!(seen.insert(boundary), "duplicate boundary");
+            }
+        }
+        assert_eq!(seen.len(), per_thread * 8);
+    }
+
+    #[test]
+    fn estimates_cover_the_output() {
+        let ascii = "lorem ipsum dolor sit amet ".repeat(40_000);
+        let latin = "réunion d'équipe: résumé ".repeat(40_000);
+        let cjk = "안녕하세요 세계 ".repeat(40_000);
+        let binary: Vec<u8> = (0..1_000_000u32).map(|value| value as u8).collect();
+        let parts = vec![
+            MimePart::new("text/plain", ascii.as_str()),
+            MimePart::new("text/plain", latin.as_str()),
+            MimePart::new("text/plain", cjk.as_str()),
+            MimePart::new("image/png", binary.as_slice()),
+            MimePart::new("text/plain", cjk.as_str()).attachment("report.txt"),
+            MimePart::new("image/png", binary.as_slice()).attachment("photo.png"),
+            MimePart::new(
+                "multipart/alternative",
+                vec![
+                    MimePart::new("text/plain", "short"),
+                    MimePart::new("text/html", "<p>short</p>"),
+                ],
+            ),
+        ];
+        for part in parts {
+            let estimate = part.estimated_len();
+            let mut output = Vec::new();
+            part.write_part(&mut output);
+            assert!(
+                estimate >= output.len(),
+                "estimate {estimate} below output {}",
+                output.len()
+            );
+            assert!(
+                estimate <= output.len() * 2,
+                "estimate {estimate} more than twice the output {}",
+                output.len()
+            );
+        }
     }
 }

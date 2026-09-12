@@ -282,6 +282,25 @@ mod tests {
     use mail_parser::MessageParser;
 
     #[test]
+    fn lines_with_encoded_words_stay_within_76_characters() {
+        let mut output = b"Bcc: ".to_vec();
+        Address::new_address(Some("¡El ñandú comió ñoquis!"), "addr1@example.com")
+            .write_header(&mut output, 5);
+        let header = String::from_utf8(output).unwrap();
+        for line in header.trim_end().split("\r\n") {
+            assert!(
+                !line.contains("=?") || line.len() <= 76,
+                "line of {} bytes: {line:?}",
+                line.len()
+            );
+        }
+        assert_eq!(
+            header,
+            "Bcc: =?utf-8?B?wqFFbCDDsWFuZMO6IGNvbWnDsyDDsW9xdWlzIQ==?=\r\n <addr1@example.com>\r\n"
+        );
+    }
+
+    #[test]
     fn nameless_groups_are_written_as_their_mailboxes() {
         let header = build(Address::new_group(
             None::<&str>,

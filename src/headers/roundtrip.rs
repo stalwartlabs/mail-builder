@@ -22,6 +22,7 @@ use mail_parser::{MessageParser, MimeHeaders};
 const CASES: usize = 5_000;
 const DATE_CASES: usize = 50_000;
 const MAX_LINE: usize = 78;
+const ENCODED_LINE: usize = 76;
 const MAX_ENCODED_WORD: usize = 75;
 
 pub(crate) struct Prng(u64);
@@ -449,7 +450,15 @@ fn validate(header: &[u8], column: usize, allow_trailing_ws: bool) {
             );
         }
 
-        for word in encoded_words(line) {
+        let words = encoded_words(line);
+        if words.iter().any(|word| !word.quoted) && content.iter().any(|&byte| is_wsp(byte)) {
+            assert!(
+                line.len() - trailing <= ENCODED_LINE,
+                "line of {} bytes carries an encoded word in {text:?}",
+                line.len()
+            );
+        }
+        for word in words {
             assert!(
                 word.quoted || word.len <= MAX_ENCODED_WORD,
                 "encoded word of {} characters in {text:?}",

@@ -20,6 +20,7 @@ use crate::{
 pub(crate) const FOLD_TARGET: usize = 78;
 
 pub(crate) const MAX_ENCODED_WORD: usize = 75;
+const ENCODED_LINE_TARGET: usize = 76;
 const Q_UTF8: &[u8] = b"=?utf-8?Q?";
 const Q_ASCII: &[u8] = b"=?us-ascii?Q?";
 pub(crate) const B_UTF8: &[u8] = b"=?utf-8?B?";
@@ -41,18 +42,22 @@ const fn is_line_break(byte: u8) -> bool {
 
 /// Header folder: the caller emits unbreakable atoms and foldable
 /// whitespace, the folder decides where the line breaks.
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum Pending {
-    None,
-    Space,
-    Semicolon,
+const PENDING_NONE: u8 = 0;
+const PENDING_SPACE: u8 = 1;
+const PENDING_SEMICOLON: u8 = 2;
+const SEPARATOR_MASK: u8 = 3;
+const ENCODED_LINE: u8 = 4;
+
+#[inline(always)]
+const fn line_limit(pending: u8) -> usize {
+    FOLD_TARGET - ((pending & ENCODED_LINE) >> 1) as usize
 }
 
 pub(crate) struct FoldWriter<'x, W: Writer> {
     output: &'x mut W,
     column: usize,
     line_start: usize,
-    pending: Pending,
+    pending: u8,
 }
 
 impl<'x, W: Writer> FoldWriter<'x, W> {
@@ -64,9 +69,9 @@ impl<'x, W: Writer> FoldWriter<'x, W> {
             column,
             line_start: if folds_first { 0 } else { column },
             pending: if folds_first {
-                Pending::Space
+                PENDING_SPACE
             } else {
-                Pending::None
+                PENDING_NONE
             },
         }
     }
@@ -116,52 +121,50 @@ impl<'x, W: Writer> FoldWriter<'x, W> {
 
     #[inline(always)]
     pub(crate) fn space(&mut self) {
-        self.pending = Pending::Space;
+        self.pending = (self.pending & ENCODED_LINE) | PENDING_SPACE;
     }
 
     #[inline(always)]
     pub(crate) fn semicolon(&mut self) {
-        self.pending = Pending::Semicolon;
+        self.pending = (self.pending & ENCODED_LINE) | PENDING_SEMICOLON;
     }
 
     #[inline(always)]
     fn separator_len(&self) -> usize {
-        match self.pending {
-            Pending::None => 0,
-            Pending::Space => 1,
-            Pending::Semicolon => 2,
-        }
+        (self.pending & SEPARATOR_MASK) as usize
     }
 
     #[inline(always)]
     pub(crate) fn begin_atom(&mut self, len: usize) {
         let pending = self.pending;
-        if pending == Pending::None {
+        let separator = (pending & SEPARATOR_MASK) as usize;
+        if separator == 0 {
             return;
         }
 
-        self.pending = Pending::None;
-        let separator = usize::from(pending == Pending::Semicolon) + 1;
-
-        if self.can_fold() && self.column + separator + len > FOLD_TARGET {
-            match pending {
-                Pending::Semicolon => self.output.write(b";\r\n "),
-                _ => self.output.write(b"\r\n "),
+        if self.can_fold() && self.column + separator + len > line_limit(pending) {
+            if separator == 2 {
+                self.output.write(b";\r\n ");
+            } else {
+                self.output.write(b"\r\n ");
             }
+            self.pending = PENDING_NONE;
             self.column = 1;
             self.line_start = 1;
         } else {
-            match pending {
-                Pending::Semicolon => self.output.write(b"; "),
-                _ => self.output.write_byte(b' '),
+            if separator == 2 {
+                self.output.write(b"; ");
+            } else {
+                self.output.write_byte(b' ');
             }
+            self.pending = pending & ENCODED_LINE;
             self.column += separator;
         }
     }
 
     #[inline(always)]
     fn fold_or_write(&mut self, ws: &[u8], atom_len: usize) {
-        if self.can_fold() && self.column + ws.len() + atom_len > FOLD_TARGET {
+        if self.can_fold() && self.column + ws.len() + atom_len > line_limit(self.pending) {
             match ws {
                 [b' '] => self.output.write(b"\r\n "),
                 _ => {
@@ -169,6 +172,7 @@ impl<'x, W: Writer> FoldWriter<'x, W> {
                     self.output.write(ws);
                 }
             }
+            self.pending = PENDING_NONE;
             self.column = ws.len();
             self.line_start = ws.len();
         } else {
@@ -192,6 +196,7 @@ impl<'x, W: Writer> FoldWriter<'x, W> {
                 Some(indent) if !indent.is_empty() && self.can_fold() => {
                     self.output.write(b"\r\n");
                     self.output.write(indent);
+                    self.pending = PENDING_NONE;
                     self.column = indent.len();
                     self.line_start = indent.len();
                 }
@@ -215,12 +220,25 @@ impl<'x, W: Writer> FoldWriter<'x, W> {
 
     #[inline(always)]
     pub(crate) fn fits(&self, len: usize) -> bool {
-        !self.can_fold() || self.column + len <= FOLD_TARGET
+        !self.can_fold() || self.column + len <= line_limit(self.pending)
     }
 
     #[inline(always)]
     pub(crate) fn certainly_fits(&self, len: usize) -> bool {
-        self.column + self.separator_len() + len <= FOLD_TARGET
+        self.column + self.separator_len() + len <= line_limit(self.pending)
+    }
+
+    #[inline(always)]
+    pub(crate) fn word_fits(&self, len: usize) -> bool {
+        self.column + self.separator_len() + len <= ENCODED_LINE_TARGET
+            || (self.can_fold() && len < ENCODED_LINE_TARGET)
+    }
+
+    #[inline(always)]
+    pub(crate) fn begin_word(&mut self, len: usize) {
+        self.pending |= ENCODED_LINE;
+        self.begin_atom(len);
+        self.pending |= ENCODED_LINE;
     }
 
     #[inline(always)]
@@ -233,7 +251,7 @@ impl<'x, W: Writer> FoldWriter<'x, W> {
         whole: impl FnOnce() -> usize,
     ) -> usize {
         let separator = self.separator_len();
-        let room = FOLD_TARGET.saturating_sub(self.column + separator + reserve);
+        let room = ENCODED_LINE_TARGET.saturating_sub(self.column + separator + reserve);
         let (lower, upper) = bounds;
 
         let keep_line = !self.can_fold()
@@ -252,15 +270,16 @@ impl<'x, W: Writer> FoldWriter<'x, W> {
             self.begin_atom(0);
             room
         } else {
-            match self.pending {
-                Pending::Semicolon => self.output.write(b";\r\n "),
-                _ => self.output.write(b"\r\n "),
+            if self.pending & SEPARATOR_MASK == PENDING_SEMICOLON {
+                self.output.write(b";\r\n ");
+            } else {
+                self.output.write(b"\r\n ");
             }
-            self.pending = Pending::None;
             self.column = 1;
             self.line_start = 1;
-            FOLD_TARGET - 1 - reserve
+            ENCODED_LINE_TARGET - 1 - reserve
         };
+        self.pending = ENCODED_LINE;
 
         room.min(MAX_ENCODED_WORD)
             .saturating_sub(overhead)
@@ -311,7 +330,7 @@ fn has_line_break(bytes: &[u8]) -> bool {
 /// Writes `value` as unstructured text, folding before whitespace runs and
 /// keeping every run so that unfolding restores the original value.
 pub(crate) fn write_unstructured<W: Writer>(folder: &mut FoldWriter<'_, W>, value: &[u8]) {
-    if folder.column + value.len() <= FOLD_TARGET && !has_line_break(value) {
+    if folder.column + value.len() <= line_limit(folder.pending) && !has_line_break(value) {
         folder.write(value);
         return;
     }
@@ -552,8 +571,8 @@ pub(crate) fn write_b_words<W: Writer>(folder: &mut FoldWriter<'_, W>, text: &st
     let overhead = B_OVERHEAD;
     let whole = overhead + base64_encoded_len(text.len());
 
-    if whole <= MAX_ENCODED_WORD {
-        folder.begin_atom(whole + tail.len());
+    if whole <= MAX_ENCODED_WORD && folder.word_fits(whole + tail.len()) {
+        folder.begin_word(whole + tail.len());
         folder.write(B_UTF8);
         folder.write_encoded(|output| base64_encode_inline(text.as_bytes(), output));
         folder.write(b"?=");

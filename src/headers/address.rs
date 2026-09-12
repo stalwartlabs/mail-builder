@@ -152,11 +152,12 @@ impl Address<'_> {
         match self {
             Address::Address(_) => false,
             Address::Group(group) => {
-                in_group
+                let named = group.name.is_some();
+                (in_group || !named)
                     && group
                         .addresses
                         .iter()
-                        .all(|address| address.writes_nothing(true))
+                        .all(|address| address.writes_nothing(in_group || named))
             }
             Address::List(list) => list.iter().all(|address| address.writes_nothing(in_group)),
         }
@@ -243,6 +244,10 @@ impl Header for EmailAddress<'_> {
 
 impl GroupedAddresses<'_> {
     pub(crate) fn write_group<W: Writer>(&self, folder: &mut FoldWriter<'_, W>, tail: &[u8]) {
+        let Some(name) = &self.name else {
+            return write_list(folder, &self.addresses, tail, false);
+        };
+
         let is_empty = self
             .addresses
             .iter()
@@ -254,14 +259,7 @@ impl GroupedAddresses<'_> {
         };
         let name_tail = if is_empty { name_tail } else { b":" };
 
-        match &self.name {
-            Some(name) => write_phrase(folder, name, name_tail),
-            None => {
-                folder.begin_atom(2 + name_tail.len());
-                folder.write(b"\"\"");
-                folder.write_tail(name_tail);
-            }
-        }
+        write_phrase(folder, name, name_tail);
 
         if !is_empty {
             folder.space();
@@ -282,6 +280,54 @@ impl Header for GroupedAddresses<'_> {
 mod tests {
     use super::*;
     use mail_parser::MessageParser;
+
+    #[test]
+    fn nameless_groups_are_written_as_their_mailboxes() {
+        let header = build(Address::new_group(
+            None::<&str>,
+            vec![
+                Address::new_address(None::<&str>, "a@x.test"),
+                Address::new_address(None::<&str>, "b@x.test"),
+            ],
+        ));
+        assert_eq!(header, "<a@x.test>, <b@x.test>\r\n");
+
+        let header = build(Address::new_list(vec![
+            Address::new_group(
+                Some("List 1"),
+                vec![Address::new_address(None::<&str>, "a@x.test")],
+            ),
+            Address::new_group(
+                None::<&str>,
+                vec![
+                    Address::new_address(None::<&str>, "b@x.test"),
+                    Address::new_address(None::<&str>, "c@x.test"),
+                ],
+            ),
+        ]));
+        assert_eq!(
+            header,
+            "\"List 1\": <a@x.test>;, <b@x.test>, <c@x.test>\r\n"
+        );
+        assert_eq!(
+            parse(&header),
+            vec![
+                (None, Some("a@x.test".to_string())),
+                (None, Some("b@x.test".to_string())),
+                (None, Some("c@x.test".to_string())),
+            ]
+        );
+
+        let header = build(Address::new_group(None::<&str>, vec![]));
+        assert_eq!(header, "\r\n");
+
+        let header = build(Address::new_list(vec![
+            Address::new_group(None::<&str>, vec![]),
+            Address::new_address(None::<&str>, "a@x.test"),
+            Address::new_group(None::<&str>, vec![]),
+        ]));
+        assert_eq!(header, "<a@x.test>\r\n");
+    }
 
     #[test]
     fn group_with_empty_nested_group_last_is_terminated() {

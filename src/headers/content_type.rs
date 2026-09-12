@@ -73,12 +73,57 @@ mod tests {
         String::from_utf8(output).unwrap()
     }
 
+    fn parsed_filename(header: &str) -> String {
+        use mail_parser::MimeHeaders;
+
+        let raw = format!("Content-Type: {header}");
+        let message = mail_parser::MessageParser::new()
+            .parse_headers(raw.as_bytes())
+            .unwrap();
+        message
+            .content_type()
+            .and_then(|value| value.attribute("filename"))
+            .unwrap()
+            .to_string()
+    }
+
     #[test]
-    fn encoded_parameter_value_stays_quoted() {
+    fn non_ascii_parameter_value_uses_rfc_2231() {
         let header =
             build(ContentType::new("attachment").attribute("filename", "Jahresabschluß, 2024.pdf"));
-        assert!(header.contains("filename=\"=?"), "{header:?}");
-        assert!(header.contains("?=\""), "{header:?}");
+        assert_eq!(
+            header,
+            "attachment; filename*=UTF-8''Jahresabschlu%C3%9F%2C%202024.pdf\r\n"
+        );
+        assert_eq!(parsed_filename(&header), "Jahresabschluß, 2024.pdf");
+    }
+
+    #[test]
+    fn long_rfc_2231_value_is_split_into_sections() {
+        let name = "Réunion d'équipe: résumé des décisions du trimestre et prochaines étapes du projet (version finale).pdf";
+        let header = build(
+            ContentType::new("attachment")
+                .attribute("filename", name)
+                .attribute("size", "1234"),
+        );
+        assert!(
+            header.contains("filename*0*=UTF-8''R%C3%A9union"),
+            "{header:?}"
+        );
+        assert!(header.contains(" filename*1*="), "{header:?}");
+        assert!(!header.contains("%C3;"), "{header:?}");
+        assert!(header.ends_with(" size=\"1234\"\r\n"), "{header:?}");
+        assert!(!header.contains("=?"), "{header:?}");
+        for line in header.trim_end().split("\r\n") {
+            assert!(line.len() <= 78, "{line:?}");
+        }
+        assert_eq!(parsed_filename(&header), name);
+    }
+
+    #[test]
+    fn control_characters_in_parameter_values_are_percent_encoded() {
+        let header = build(ContentType::new("attachment").attribute("filename", "a\r\nb\u{1}.pdf"));
+        assert_eq!(header, "attachment; filename*=UTF-8''a%0D%0Ab%01.pdf\r\n");
     }
 
     #[test]

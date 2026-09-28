@@ -4,53 +4,19 @@
  * SPDX-License-Identifier: Apache-2.0 OR MIT
  */
 
-use super::fold::{FoldWriter, write_b_words, write_q_words, zero_lane};
+use super::fold::{FoldWriter, zero_lane};
 use crate::{
     encoders::{
-        encode::{EncodingType, get_encoding_type},
-        quoted_printable::{swar_del_or_above, swar_zero_lanes},
+        encode::EncodingType,
+        swar::{swar_del_or_above, swar_zero_lanes},
     },
     writer::Writer,
 };
+use encodify::hex::PERCENT;
 
 const EXTENDED_CHARSET: &[u8] = b"UTF-8''";
 const MAX_PARAMETER_ATOM: usize = 75;
 const MIN_SECTION_PAYLOAD: usize = 12;
-const HEX_UPPER: &[u8; 16] = b"0123456789ABCDEF";
-
-const fn attribute_char_len_table() -> [u8; 256] {
-    let mut table = [3u8; 256];
-    let mut byte = 0;
-
-    while byte < 128 {
-        let ch = byte as u8;
-        if ch.is_ascii_alphanumeric()
-            || matches!(
-                ch,
-                b'!' | b'#'
-                    | b'$'
-                    | b'&'
-                    | b'+'
-                    | b'-'
-                    | b'.'
-                    | b'^'
-                    | b'_'
-                    | b'`'
-                    | b'{'
-                    | b'|'
-                    | b'}'
-                    | b'~'
-            )
-        {
-            table[byte] = 1;
-        }
-        byte += 1;
-    }
-
-    table
-}
-
-const ATTRIBUTE_CHAR_LEN: [u8; 256] = attribute_char_len_table();
 
 const fn escape_table() -> [u8; 256] {
     let mut table = [0u8; 256];
@@ -243,10 +209,10 @@ pub(crate) fn write_quoted_string<W: Writer>(
 /// value cannot be represented as US-ASCII.
 #[inline]
 pub(crate) fn write_phrase<W: Writer>(folder: &mut FoldWriter<'_, W>, name: &str, tail: &[u8]) {
-    match get_encoding_type(name.as_bytes(), true, false) {
-        EncodingType::Base64 => write_b_words(folder, name, tail),
+    match EncodingType::for_header(name.as_bytes()) {
+        EncodingType::Base64 => folder.write_b_words(name, tail),
         EncodingType::QuotedPrintable(is_ascii) => {
-            write_q_words::<_, true>(folder, name, is_ascii, tail)
+            folder.write_q_words::<true>(name, is_ascii, tail)
         }
         EncodingType::None => write_quoted_string(folder, name, tail),
     }
@@ -302,72 +268,17 @@ fn needs_extended_encoding(bytes: &[u8]) -> bool {
     found != 0 || tail.iter().any(|&byte| !(0x20..0x7F).contains(&byte))
 }
 
-const fn percent_word_table() -> [u32; 256] {
-    let mut table = [0u32; 256];
-    let mut byte = 0;
-
-    while byte < 256 {
-        table[byte] = if ATTRIBUTE_CHAR_LEN[byte] == 1 {
-            byte as u32
-        } else {
-            u32::from_le_bytes([b'%', HEX_UPPER[byte >> 4], HEX_UPPER[byte & 0x0F], 0])
-        };
-        byte += 1;
-    }
-
-    table
-}
-
-const PERCENT_WORDS: [u32; 256] = percent_word_table();
-const SECTION_BUFFER_LEN: usize = MAX_PARAMETER_ATOM + 16;
-
-#[inline(always)]
-fn push_percent_encoded(buffer: &mut [u8; SECTION_BUFFER_LEN], at: usize, byte: u8) -> usize {
-    if let Some(slot) = buffer.get_mut(at..at + 4) {
-        slot.copy_from_slice(&PERCENT_WORDS[byte as usize].to_le_bytes());
-    }
-    at + ATTRIBUTE_CHAR_LEN[byte as usize] as usize
-}
-
-#[inline(always)]
-fn encode_whole(
-    bytes: &[u8],
-    budget: usize,
-    buffer: &mut [u8; SECTION_BUFFER_LEN],
-) -> Option<usize> {
-    let mut len = 0;
-
-    for &byte in bytes {
-        if len + ATTRIBUTE_CHAR_LEN[byte as usize] as usize > budget {
-            return None;
-        }
-        len = push_percent_encoded(buffer, len, byte);
-    }
-
-    Some(len)
-}
-
-fn encode_section(
-    text: &str,
-    budget: usize,
-    buffer: &mut [u8; SECTION_BUFFER_LEN],
-) -> (usize, usize) {
+fn section_len(text: &str, budget: usize) -> (usize, usize) {
     let mut taken = 0;
     let mut len = 0;
 
     for (start, ch) in text.char_indices() {
         let end = start + ch.len_utf8();
-        let bytes = text.as_bytes().get(start..end).unwrap_or_default();
-        let char_len: usize = bytes
-            .iter()
-            .map(|&byte| ATTRIBUTE_CHAR_LEN[byte as usize] as usize)
-            .sum();
+        let char_len = PERCENT.encoded_len(text.as_bytes().get(start..end).unwrap_or_default());
         if len + char_len > budget && taken > 0 {
             break;
         }
-        for &byte in bytes {
-            len = push_percent_encoded(buffer, len, byte);
-        }
+        len += char_len;
         taken = end;
     }
 
@@ -404,16 +315,18 @@ fn write_extended_parameter<W: Writer>(
     value: &str,
     reserve: usize,
 ) {
-    let mut buffer = [0u8; SECTION_BUFFER_LEN];
     let prefix = key.len() + 2 + EXTENDED_CHARSET.len();
     let budget = MAX_PARAMETER_ATOM.saturating_sub(prefix + reserve);
+    let whole = (value.len() <= budget)
+        .then(|| PERCENT.encoded_len(value))
+        .filter(|&len| len <= budget);
 
-    if let Some(len) = encode_whole(value.as_bytes(), budget, &mut buffer) {
+    if let Some(len) = whole {
         folder.begin_atom(prefix + len + reserve);
         folder.write(key.as_bytes());
         folder.write(b"*=");
         folder.write(EXTENDED_CHARSET);
-        folder.write(buffer.get(..len).unwrap_or_default());
+        folder.append_with(len, |buffer| PERCENT.encode_append(value, buffer));
         return;
     }
 
@@ -431,15 +344,15 @@ fn write_extended_parameter<W: Writer>(
         let budget = MAX_PARAMETER_ATOM
             .saturating_sub(prefix + 1)
             .max(MIN_SECTION_PAYLOAD);
-        let (taken, len) = encode_section(rest, budget, &mut buffer);
-        let tail = rest.get(taken..).unwrap_or_default();
+        let (taken, len) = section_len(rest, budget);
+        let (chunk, tail) = rest.split_at_checked(taken).unwrap_or((rest, ""));
 
         if section > 0 {
             folder.semicolon();
         }
         folder.begin_atom(prefix + len + if tail.is_empty() { reserve } else { 1 });
         write_section_prefix(folder, key, section);
-        folder.write(buffer.get(..len).unwrap_or_default());
+        folder.append_with(len, |buffer| PERCENT.encode_append(chunk, buffer));
 
         if tail.is_empty() {
             return;

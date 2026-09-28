@@ -4,16 +4,10 @@
  * SPDX-License-Identifier: Apache-2.0 OR MIT
  */
 
-use crate::{
-    encoders::{
-        base64::{base64_encode_inline, base64_encoded_len},
-        quoted_printable::{
-            inline_quoted_printable_encode, phrase_quoted_printable_encode,
-            quoted_printable_byte_len, quoted_printable_encode_byte,
-            quoted_printable_encode_phrase_byte, quoted_printable_phrase_byte_len,
-        },
-    },
-    writer::Writer,
+use crate::writer::Writer;
+use encodify::{
+    qp,
+    rfc2047::{self, B},
 };
 
 /// Line length RFC 5322 section 2.1.1 recommends staying below.
@@ -23,11 +17,11 @@ pub(crate) const MAX_ENCODED_WORD: usize = 75;
 const ENCODED_LINE_TARGET: usize = 76;
 const Q_UTF8: &[u8] = b"=?utf-8?Q?";
 const Q_ASCII: &[u8] = b"=?us-ascii?Q?";
-pub(crate) const B_UTF8: &[u8] = b"=?utf-8?B?";
-pub(crate) const B_OVERHEAD: usize = B_UTF8.len() + 2;
+const B_UTF8: &[u8] = b"=?utf-8?B?";
+const WORD_END: &[u8] = b"?=";
+const B_OVERHEAD: usize = B_UTF8.len() + WORD_END.len();
 const MAX_Q_CHAR_LEN: usize = 12;
 const MAX_B_CHAR_LEN: usize = 8;
-const SHORT_RUN_LEN: usize = 8;
 const SHORT_WRITE_LEN: usize = 8;
 
 #[inline(always)]
@@ -115,8 +109,35 @@ impl<'x, W: Writer> FoldWriter<'x, W> {
     }
 
     #[inline(always)]
-    pub(crate) fn write_encoded(&mut self, fill: impl FnOnce(&mut W) -> usize) {
-        self.column += fill(self.output);
+    pub(crate) fn append_with<T>(
+        &mut self,
+        len: usize,
+        append: impl FnOnce(&mut Vec<u8>) -> T,
+    ) -> T {
+        let mut appended = 0;
+        let result = self.output.append_with(len, |buffer| {
+            let start = buffer.len();
+            let result = append(buffer);
+            appended = buffer.len() - start;
+            result
+        });
+        self.column += appended;
+        result
+    }
+
+    #[inline(always)]
+    fn write_word(
+        &mut self,
+        prefix: &[u8],
+        budget: usize,
+        payload: impl FnOnce(&mut Vec<u8>) -> usize,
+    ) -> usize {
+        self.append_with(prefix.len() + budget + WORD_END.len(), |buffer| {
+            buffer.extend_from_slice(prefix);
+            let consumed = payload(buffer);
+            buffer.extend_from_slice(WORD_END);
+            consumed
+        })
     }
 
     #[inline(always)]
@@ -360,250 +381,87 @@ pub(crate) fn write_unstructured<W: Writer>(folder: &mut FoldWriter<'_, W>, valu
     }
 }
 
-const fn q_len_table(phrase: bool) -> [u8; 256] {
-    let mut table = [0u8; 256];
-    let mut byte = 0;
-
-    while byte < 256 {
-        table[byte] = if phrase {
-            quoted_printable_phrase_byte_len(byte as u8)
+impl<W: Writer> FoldWriter<'_, W> {
+    /// Writes `text` as a sequence of RFC 2047 "Q" encoded words, at most 75
+    /// characters each, split only at UTF-8 character boundaries.
+    pub(crate) fn write_q_words<const PHRASE: bool>(
+        &mut self,
+        text: &str,
+        is_ascii: bool,
+        tail: &[u8],
+    ) {
+        let (words, q) = if PHRASE {
+            (rfc2047::Q_PHRASE, qp::Q_PHRASE)
         } else {
-            quoted_printable_byte_len(byte as u8)
-        } as u8;
-        byte += 1;
-    }
-
-    table
-}
-
-const fn q_literal_table(phrase: bool) -> [u8; 256] {
-    let lengths = q_len_table(phrase);
-    let mut table = [0u8; 256];
-    let mut byte = 0;
-
-    while byte < 256 {
-        table[byte] = (lengths[byte] == 1 && byte != b' ' as usize) as u8;
-        byte += 1;
-    }
-
-    table
-}
-
-const Q_LEN: [u8; 256] = q_len_table(false);
-const Q_PHRASE_LEN: [u8; 256] = q_len_table(true);
-const Q_LITERAL: [u8; 256] = q_literal_table(false);
-const Q_PHRASE_LITERAL: [u8; 256] = q_literal_table(true);
-
-#[inline(always)]
-fn q_len_bytes<const PHRASE: bool>() -> &'static [u8; 256] {
-    if PHRASE { &Q_PHRASE_LEN } else { &Q_LEN }
-}
-
-#[inline(always)]
-pub(crate) fn q_byte_len<const PHRASE: bool>(byte: u8) -> usize {
-    q_len_bytes::<PHRASE>()[byte as usize] as usize
-}
-
-#[inline(always)]
-fn q_encode_byte<const PHRASE: bool>(byte: u8, output: &mut impl Writer) -> usize {
-    if PHRASE {
-        quoted_printable_encode_phrase_byte(byte, output)
-    } else {
-        quoted_printable_encode_byte(byte, output)
-    }
-}
-
-#[inline(always)]
-fn q_encode_slice<const PHRASE: bool>(input: &[u8], output: &mut impl Writer) -> usize {
-    if PHRASE {
-        phrase_quoted_printable_encode(input, output)
-    } else {
-        inline_quoted_printable_encode(input, output)
-    }
-}
-
-#[inline(always)]
-fn q_whole_len<const PHRASE: bool>(text: &str, max: usize) -> usize {
-    if text.len() > max {
-        return usize::MAX;
-    }
-
-    let table = q_len_bytes::<PHRASE>();
-    let len: usize = text
-        .as_bytes()
-        .iter()
-        .map(|&byte| table[byte as usize] as usize)
-        .sum();
-
-    if len > max { usize::MAX } else { len }
-}
-
-#[inline(always)]
-fn is_literal<const PHRASE: bool>(byte: u8) -> bool {
-    let table = if PHRASE {
-        &Q_PHRASE_LITERAL
-    } else {
-        &Q_LITERAL
-    };
-    table[byte as usize] != 0
-}
-
-#[inline(always)]
-const fn char_len(byte: u8) -> usize {
-    match byte.leading_ones() {
-        0 | 1 => 1,
-        ones => ones as usize,
-    }
-}
-
-/// Writes as much of `text` as fits in `budget` encoded characters, copying
-/// runs that the "Q" encoding leaves untouched and escaping whole UTF-8
-/// characters. Returns the number of input bytes consumed.
-fn write_q_payload<W: Writer, const PHRASE: bool>(
-    output: &mut W,
-    text: &str,
-    budget: usize,
-    consumed: &mut usize,
-) -> usize {
-    let mut rest = text.as_bytes();
-    let mut len = 0;
-
-    loop {
-        let run = rest
-            .iter()
-            .position(|&byte| !is_literal::<PHRASE>(byte))
-            .unwrap_or(rest.len());
-        let take = run.min(budget - len);
-
-        if take > 0 {
-            let (head, tail) = rest.split_at(take);
-            if take < SHORT_RUN_LEN {
-                for &byte in head {
-                    output.write_byte(byte);
-                }
-            } else {
-                output.write(head);
-            }
-            len += take;
-            rest = tail;
-        }
-
-        if take < run {
-            break;
-        }
-
-        let Some(&byte) = rest.first() else {
-            break;
+            (rfc2047::Q_TEXT, qp::Q_TEXT)
         };
-        let chars = char_len(byte);
-        let cost = if chars == 1 {
-            q_byte_len::<PHRASE>(byte)
-        } else {
-            chars * 3
-        };
-        if len + cost > budget {
-            break;
-        }
+        let prefix = if is_ascii { Q_ASCII } else { Q_UTF8 };
+        let overhead = prefix.len() + WORD_END.len();
+        let max_payload = MAX_ENCODED_WORD - overhead;
+        let mut rest = text;
 
-        let (head, tail) = rest.split_at(chars.min(rest.len()));
-        if chars == 1 {
-            q_encode_byte::<PHRASE>(byte, output);
-        } else {
-            q_encode_slice::<PHRASE>(head, output);
-        }
-        len += cost;
-        rest = tail;
-    }
-
-    *consumed = text.len() - rest.len();
-    len
-}
-
-/// Writes `text` as a sequence of RFC 2047 "Q" encoded words, at most 75
-/// characters each, split only at UTF-8 character boundaries.
-pub(crate) fn write_q_words<W: Writer, const PHRASE: bool>(
-    folder: &mut FoldWriter<'_, W>,
-    text: &str,
-    is_ascii: bool,
-    tail: &[u8],
-) {
-    let overhead = if is_ascii {
-        Q_ASCII.len()
-    } else {
-        Q_UTF8.len()
-    } + 2;
-    let max_payload = MAX_ENCODED_WORD - overhead;
-    let mut rest = text;
-
-    loop {
-        let bounds = (
-            overhead.saturating_add(rest.len()),
-            overhead.saturating_add(rest.len().saturating_mul(3)),
-        );
-        let budget = folder.take_word_budget(overhead, MAX_Q_CHAR_LEN, tail.len(), bounds, || {
-            overhead.saturating_add(q_whole_len::<PHRASE>(rest, max_payload))
-        });
-        if is_ascii {
-            folder.write(Q_ASCII);
-        } else {
-            folder.write(Q_UTF8);
-        }
-        let mut consumed = 0;
-        folder.write_encoded(|output| {
-            write_q_payload::<W, PHRASE>(output, rest, budget, &mut consumed)
-        });
-        folder.write(b"?=");
-
-        rest = rest.get(consumed..).unwrap_or_default();
-        if rest.is_empty() {
-            folder.write_tail(tail);
-            return;
-        }
-
-        folder.space();
-    }
-}
-
-/// Writes `text` as a sequence of RFC 2047 "B" encoded words, at most 75
-/// characters each, split only at UTF-8 character boundaries.
-#[inline(never)]
-pub(crate) fn write_b_words<W: Writer>(folder: &mut FoldWriter<'_, W>, text: &str, tail: &[u8]) {
-    let overhead = B_OVERHEAD;
-    let whole = overhead + base64_encoded_len(text.len());
-
-    if whole <= MAX_ENCODED_WORD && folder.word_fits(whole + tail.len()) {
-        folder.begin_word(whole + tail.len());
-        folder.write(B_UTF8);
-        folder.write_encoded(|output| base64_encode_inline(text.as_bytes(), output));
-        folder.write(b"?=");
-        folder.write_tail(tail);
-        return;
-    }
-
-    let mut rest = text;
-
-    loop {
-        let whole = overhead.saturating_add(base64_encoded_len(rest.len()));
-        let budget =
-            folder.take_word_budget(overhead, MAX_B_CHAR_LEN, tail.len(), (whole, whole), || {
-                whole
+        loop {
+            let bounds = (
+                overhead.saturating_add(rest.len()),
+                overhead.saturating_add(rest.len().saturating_mul(3)),
+            );
+            let budget =
+                self.take_word_budget(overhead, MAX_Q_CHAR_LEN, tail.len(), bounds, || {
+                    q.encoded_len_within(rest, max_payload)
+                        .map_or(usize::MAX, |len| overhead + len)
+                });
+            let consumed = self.write_word(prefix, budget, |buffer| {
+                words.encode_payload(rest, budget, buffer)
             });
-        let mut consumed = (budget / 4 * 3).min(rest.len());
-        while consumed > 0 && !rest.is_char_boundary(consumed) {
-            consumed -= 1;
+
+            rest = rest.get(consumed..).unwrap_or_default();
+            if rest.is_empty() {
+                self.write_tail(tail);
+                return;
+            }
+
+            self.space();
         }
-        let (chunk, next) = rest.split_at_checked(consumed).unwrap_or((rest, ""));
+    }
 
-        folder.write(B_UTF8);
-        folder.write_encoded(|output| base64_encode_inline(chunk.as_bytes(), output));
-        folder.write(b"?=");
+    /// Writes `text` as a sequence of RFC 2047 "B" encoded words, at most 75
+    /// characters each, split only at UTF-8 character boundaries.
+    #[inline(never)]
+    pub(crate) fn write_b_words(&mut self, text: &str, tail: &[u8]) {
+        let payload = B.payload_len(text);
+        let whole = B_OVERHEAD + payload;
 
-        if next.is_empty() {
-            folder.write_tail(tail);
+        if whole <= MAX_ENCODED_WORD && self.word_fits(whole + tail.len()) {
+            self.begin_word(whole + tail.len());
+            self.write_word(B_UTF8, payload, |buffer| {
+                B.encode_payload(text, payload, buffer)
+            });
+            self.write_tail(tail);
             return;
         }
 
-        folder.space();
-        rest = next;
+        let mut rest = text;
+
+        loop {
+            let whole = B_OVERHEAD.saturating_add(B.payload_len(rest));
+            let budget = self.take_word_budget(
+                B_OVERHEAD,
+                MAX_B_CHAR_LEN,
+                tail.len(),
+                (whole, whole),
+                || whole,
+            );
+            let consumed = self.write_word(B_UTF8, budget, |buffer| {
+                B.encode_payload(rest, budget, buffer)
+            });
+
+            rest = rest.get(consumed..).unwrap_or_default();
+            if rest.is_empty() {
+                self.write_tail(tail);
+                return;
+            }
+
+            self.space();
+        }
     }
 }

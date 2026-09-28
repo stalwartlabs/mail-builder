@@ -74,8 +74,6 @@ mod tests {
     }
 
     fn parsed_filename(header: &str) -> String {
-        use mail_parser::MimeHeaders;
-
         let raw = format!("Content-Type: {header}");
         let message = mail_parser::MessageParser::new()
             .parse_headers(raw.as_bytes())

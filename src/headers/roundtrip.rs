@@ -5,7 +5,7 @@
  */
 
 use crate::{
-    encoders::encode::{EncodingType, get_encoding_type},
+    encoders::encode::EncodingType,
     headers::{
         Header,
         address::{Address, EmailAddress, GroupedAddresses},
@@ -17,7 +17,9 @@ use crate::{
         url::URL,
     },
 };
-use mail_parser::{MessageParser, MimeHeaders};
+use encodify::{base64, qp};
+use mail_parser::MessageParser;
+use std::borrow::Cow;
 
 const CASES: usize = 5_000;
 const DATE_CASES: usize = 50_000;
@@ -287,46 +289,6 @@ fn lines(header: &[u8]) -> Vec<&[u8]> {
     lines
 }
 
-fn decode_base64(input: &[u8]) -> Option<Vec<u8>> {
-    const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    let mut out = Vec::new();
-    let mut acc = 0u32;
-    let mut bits = 0;
-    for &byte in input.iter().filter(|&&byte| byte != b'=') {
-        let value = ALPHABET.iter().position(|&ch| ch == byte)? as u32;
-        acc = (acc << 6) | value;
-        bits += 6;
-        if bits >= 8 {
-            bits -= 8;
-            out.push((acc >> bits) as u8);
-        }
-    }
-    Some(out)
-}
-
-fn decode_q(input: &[u8]) -> Option<Vec<u8>> {
-    let mut out = Vec::new();
-    let mut rest = input;
-    while let Some((&byte, tail)) = rest.split_first() {
-        match byte {
-            b'_' => {
-                out.push(b' ');
-                rest = tail;
-            }
-            b'=' => {
-                let (hex, tail) = tail.split_at_checked(2)?;
-                out.push(u8::from_str_radix(std::str::from_utf8(hex).ok()?, 16).ok()?);
-                rest = tail;
-            }
-            _ => {
-                out.push(byte);
-                rest = tail;
-            }
-        }
-    }
-    Some(out)
-}
-
 struct Word {
     #[allow(dead_code)]
     text: String,
@@ -373,8 +335,8 @@ fn encoded_words(line: &[u8]) -> Vec<Word> {
             String::from_utf8_lossy(word)
         );
         let decoded = match parts[1] {
-            b"Q" | b"q" => decode_q(parts[2]),
-            b"B" | b"b" => decode_base64(parts[2]),
+            b"Q" | b"q" => qp::Q_TEXT.decode(parts[2]).ok().map(Cow::into_owned),
+            b"B" | b"b" => base64::STANDARD.decode(parts[2]).ok(),
             _ => None,
         }
         .unwrap_or_else(|| {
@@ -474,7 +436,7 @@ fn collapse(value: &str) -> String {
 
 fn is_encoded(value: &str) -> bool {
     !matches!(
-        get_encoding_type(value.as_bytes(), true, false),
+        EncodingType::for_header(value.as_bytes()),
         EncodingType::None
     )
 }
@@ -488,33 +450,6 @@ fn parse_header<'x>(header: &'x [u8], name: &str) -> mail_parser::Message<'x> {
                 String::from_utf8_lossy(header)
             )
         })
-}
-
-#[test]
-fn quoted_printable_length_tables_match_the_encoders() {
-    for byte in 0..=u8::MAX {
-        let mut inline = Vec::new();
-        let mut phrase = Vec::new();
-        let inline_len =
-            crate::encoders::quoted_printable::quoted_printable_encode_byte(byte, &mut inline);
-        let phrase_len = crate::encoders::quoted_printable::quoted_printable_encode_phrase_byte(
-            byte,
-            &mut phrase,
-        );
-
-        assert_eq!(inline_len, inline.len(), "byte {byte}");
-        assert_eq!(phrase_len, phrase.len(), "byte {byte}");
-        assert_eq!(
-            crate::headers::fold::q_byte_len::<false>(byte),
-            inline_len,
-            "byte {byte}"
-        );
-        assert_eq!(
-            crate::headers::fold::q_byte_len::<true>(byte),
-            phrase_len,
-            "byte {byte}"
-        );
-    }
 }
 
 #[test]
@@ -568,7 +503,8 @@ fn raw_stays_valid() {
 
         let message = parse_header(&header, "X-Raw");
         let parsed = message
-            .header("X-Raw")
+            .headers()
+            .value("X-Raw")
             .and_then(|value| value.as_text())
             .unwrap_or_default();
         assert_eq!(
@@ -615,7 +551,7 @@ fn addresses_round_trip() {
         let parsed: Vec<(Option<String>, Option<String>)> = message
             .to()
             .map(|to| {
-                to.iter()
+                to.mailboxes()
                     .map(|addr| {
                         (
                             addr.name().map(str::to_string),
@@ -684,7 +620,8 @@ fn groups_round_trip() {
         let message = parse_header(&header, "Cc");
         let groups = message
             .cc()
-            .and_then(|cc| cc.as_group().map(|groups| groups.to_vec()))
+            .filter(|cc| cc.has_groups())
+            .map(|cc| cc.groups().collect::<Vec<_>>())
             .unwrap_or_default();
 
         if name.trim().is_empty() && count == 0 {
@@ -701,19 +638,14 @@ fn groups_round_trip() {
             let encoded = is_encoded(&name);
             assert_eq!(
                 groups[0]
-                    .name
-                    .as_deref()
+                    .0
                     .map(|parsed| address_expectation(parsed, encoded)),
                 Some(address_expectation(&name, encoded)),
                 "{name:?} -> {:?}",
                 String::from_utf8_lossy(&header)
             );
         }
-        let addresses: Vec<&str> = groups[0]
-            .addresses
-            .iter()
-            .filter_map(|addr| addr.address())
-            .collect();
+        let addresses: Vec<&str> = groups[0].1.filter_map(|addr| addr.address()).collect();
         assert_eq!(
             addresses,
             expected.iter().map(String::as_str).collect::<Vec<_>>(),
@@ -804,11 +736,10 @@ fn message_ids_round_trip() {
         let header = check("References", &MessageId::from(ids.clone()), false);
 
         let message = parse_header(&header, "References");
-        let parsed: Vec<&str> = match message.references() {
-            mail_parser::HeaderValue::Text(id) => vec![id.as_ref()],
-            mail_parser::HeaderValue::TextList(ids) => ids.iter().map(|id| id.as_ref()).collect(),
-            _ => Vec::new(),
-        };
+        let parsed: Vec<&str> = message
+            .references()
+            .map(|ids| ids.iter().collect())
+            .unwrap_or_default();
         assert_eq!(
             parsed,
             ids.iter().map(String::as_str).collect::<Vec<_>>(),
@@ -828,10 +759,9 @@ fn urls_round_trip() {
 
         let message = parse_header(&header, "List-Unsubscribe");
         let parsed: Vec<String> = message
-            .header("List-Unsubscribe")
-            .and_then(|value| value.as_address())
+            .list_unsubscribe()
             .map(|list| {
-                list.iter()
+                list.mailboxes()
                     .filter_map(|addr| addr.address().map(str::to_string))
                     .collect()
             })

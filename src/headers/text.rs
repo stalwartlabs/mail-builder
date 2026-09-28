@@ -6,12 +6,9 @@
 
 use super::{
     Header,
-    fold::{FoldWriter, write_b_words, write_q_words, write_unstructured},
+    fold::{FoldWriter, write_unstructured},
 };
-use crate::{
-    encoders::encode::{EncodingType, get_encoding_type},
-    writer::Writer,
-};
+use crate::{encoders::encode::EncodingType, writer::Writer};
 use std::borrow::Cow;
 
 /// Unstructured text e-mail header.
@@ -40,10 +37,10 @@ impl Header for Text<'_> {
     fn write_header(&self, output: &mut impl Writer, column: usize) {
         let mut folder = FoldWriter::new(output, column);
 
-        match get_encoding_type(self.text.as_bytes(), true, false) {
-            EncodingType::Base64 => write_b_words(&mut folder, &self.text, b""),
+        match EncodingType::for_header(self.text.as_bytes()) {
+            EncodingType::Base64 => folder.write_b_words(&self.text, b""),
             EncodingType::QuotedPrintable(is_ascii) => {
-                write_q_words::<_, false>(&mut folder, &self.text, is_ascii, b"")
+                folder.write_q_words::<false>(&self.text, is_ascii, b"")
             }
             EncodingType::None => write_unstructured(&mut folder, self.text.as_bytes()),
         }

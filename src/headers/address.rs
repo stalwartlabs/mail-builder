@@ -380,7 +380,7 @@ mod tests {
         message
             .cc()
             .unwrap()
-            .iter()
+            .mailboxes()
             .map(|addr| {
                 (
                     addr.name().map(str::to_string),
@@ -542,19 +542,18 @@ mod tests {
 
         let raw = format!("Cc: {header}\r\n");
         let message = MessageParser::new().parse_headers(raw.as_bytes()).unwrap();
-        let groups = message.cc().unwrap().as_group().expect("not a group");
+        let cc = message.cc().unwrap();
+        assert!(cc.has_groups(), "not a group: {header:?}");
+        let groups: Vec<_> = cc.groups().collect();
 
-        assert_eq!(groups.len(), 1, "{header:?}");
-        assert_eq!(
-            groups[0].name.as_deref(),
-            Some("Büro, Empfang"),
-            "{header:?}"
-        );
-        assert_eq!(groups[0].addresses.len(), 1, "{header:?}");
-        assert_eq!(
-            groups[0].addresses[0].name.as_deref(),
-            Some("Anna Müller"),
-            "{header:?}"
-        );
+        let [(name, members)] = groups.as_slice() else {
+            panic!("expected one group: {header:?}");
+        };
+        assert_eq!(*name, Some("Büro, Empfang"), "{header:?}");
+        let members: Vec<_> = members.collect();
+        let [member] = members.as_slice() else {
+            panic!("expected one member: {header:?}");
+        };
+        assert_eq!(member.name(), Some("Anna Müller"), "{header:?}");
     }
 }

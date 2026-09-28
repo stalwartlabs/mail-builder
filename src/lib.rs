@@ -7,7 +7,7 @@
 #![doc = include_str!("../README.md")]
 #![deny(rust_2018_idioms)]
 #![forbid(unsafe_code)]
-pub mod encoders;
+mod encoders;
 pub mod headers;
 pub mod mime;
 pub mod writer;

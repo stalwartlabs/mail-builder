@@ -28,6 +28,25 @@ pub trait Writer {
         let written = fill(&mut buffer).min(len);
         self.write(buffer.get(..written).unwrap_or_default());
     }
+
+    /// Hands `append` a buffer to append at most `len` bytes to, passes what
+    /// it appended on to the sink and returns what `append` returned.
+    ///
+    /// Sinks backed by a `Vec<u8>` hand over that vector, so encoders such as
+    /// those of `encodify` write their output in place.
+    fn append_with<T>(&mut self, len: usize, append: impl FnOnce(&mut Vec<u8>) -> T) -> T {
+        let mut buffer = Vec::with_capacity(len);
+        let result = append(&mut buffer);
+        self.write(&buffer);
+        result
+    }
+
+    /// Largest `len` worth passing to [`Writer::append_with`] at once;
+    /// longer output is appended in pieces of at most this size.
+    #[inline]
+    fn append_limit(&self) -> usize {
+        IO_BUFFER_MAX
+    }
 }
 
 impl Writer for Vec<u8> {
@@ -53,6 +72,16 @@ impl Writer for Vec<u8> {
         let written = fill(self.get_mut(start..).unwrap_or_default()).min(len);
         self.truncate(start + written);
     }
+
+    #[inline(always)]
+    fn append_with<T>(&mut self, _len: usize, append: impl FnOnce(&mut Vec<u8>) -> T) -> T {
+        append(self)
+    }
+
+    #[inline(always)]
+    fn append_limit(&self) -> usize {
+        usize::MAX
+    }
 }
 
 impl<W: Writer + ?Sized> Writer for &mut W {
@@ -74,6 +103,16 @@ impl<W: Writer + ?Sized> Writer for &mut W {
     #[inline]
     fn write_with(&mut self, len: usize, fill: impl FnOnce(&mut [u8]) -> usize) {
         (**self).write_with(len, fill);
+    }
+
+    #[inline(always)]
+    fn append_with<T>(&mut self, len: usize, append: impl FnOnce(&mut Vec<u8>) -> T) -> T {
+        (**self).append_with(len, append)
+    }
+
+    #[inline(always)]
+    fn append_limit(&self) -> usize {
+        (**self).append_limit()
     }
 }
 
@@ -167,6 +206,25 @@ impl<W: Write> Writer for IoWriter<W> {
         self.buffer.resize(start + len, 0);
         let written = fill(self.buffer.get_mut(start..).unwrap_or_default()).min(len);
         self.buffer.truncate(start + written);
+    }
+
+    #[inline]
+    fn append_with<T>(&mut self, len: usize, append: impl FnOnce(&mut Vec<u8>) -> T) -> T {
+        let capacity = self.buffer.capacity();
+        if len > capacity - self.buffer.len() {
+            self.flush_buffer();
+        }
+        let result = append(&mut self.buffer);
+        if self.buffer.capacity() > capacity {
+            self.flush_buffer();
+            self.buffer.shrink_to(capacity);
+        }
+        result
+    }
+
+    #[inline]
+    fn append_limit(&self) -> usize {
+        self.buffer.capacity()
     }
 }
 

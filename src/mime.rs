@@ -5,12 +5,13 @@
  */
 
 use crate::{
-    encoders::{base64::base64_encode_wrapped, encode::write_encoded_body},
+    encoders::encode::BodyEncoding,
     headers::{
         Header, HeaderType, content_type::ContentType, message_id::MessageId, raw::Raw, text::Text,
     },
     writer::Writer,
 };
+use encodify::base64::MIME;
 use std::{
     borrow::Cow,
     cell::Cell,
@@ -295,10 +296,10 @@ impl<'x> MimePart<'x> {
         let headers = estimated_headers_len(&self.headers);
         match &self.contents {
             BodyPart::Text(text) => headers
-                .saturating_add(base64_len(text.len()))
+                .saturating_add(MIME.encoded_len(text.len()))
                 .saturating_add(LEAF_OVERHEAD),
             BodyPart::Binary(binary) => headers
-                .saturating_add(base64_len(binary.len()))
+                .saturating_add(MIME.encoded_len(binary.len()))
                 .saturating_add(LEAF_OVERHEAD),
             BodyPart::Multipart(parts) if depth < MAX_ESTIMATE_DEPTH => {
                 parts
@@ -379,12 +380,6 @@ const LEAF_OVERHEAD: usize = 96;
 const MULTIPART_OVERHEAD: usize = 128;
 const BOUNDARY_OVERHEAD: usize = 64;
 
-#[inline(always)]
-pub(crate) fn base64_len(len: usize) -> usize {
-    let encoded = len.div_ceil(3).saturating_mul(4);
-    encoded.saturating_add(encoded.div_ceil(76).saturating_mul(2))
-}
-
 pub(crate) fn estimated_headers_len(headers: &[(Cow<'_, str>, HeaderType<'_>)]) -> usize {
     headers
         .iter()
@@ -424,10 +419,9 @@ fn write_leaf_part(
 
     if !is_raw {
         if is_text {
-            write_encoded_body(body, output, !is_attachment);
+            BodyEncoding::for_text(body, !is_attachment).write(body, output);
         } else {
-            output.write(b"Content-Transfer-Encoding: base64\r\n\r\n");
-            base64_encode_wrapped(body, output);
+            BodyEncoding::Base64.write(body, output);
         }
     } else {
         if !headers.is_empty() {

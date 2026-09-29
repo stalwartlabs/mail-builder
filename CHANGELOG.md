@@ -10,6 +10,9 @@ All notable changes to this project will be documented in this file. This projec
 ### Removed
 - **Breaking:** The `encoders` module is no longer public. `Base64Encoder`, `QuotedPrintableEncoder`, `base64_encode_slice`, `base64_encoded_len` and the `E0`, `E1` and `E2` tables are no longer exported; callers should use `encodify` instead.
 
+### Fixed
+- ASCII control characters in an address (`EmailAddress::email`) are dropped when it is written. The address was written raw between `<` and `>`, so a CR LF in it could inject header fields.
+
 ## [1.0.0] - 2026-09-12
 
 ### Added

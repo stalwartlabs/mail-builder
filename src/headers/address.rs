@@ -6,7 +6,7 @@
 
 use super::{
     Header,
-    fold::{FOLD_TARGET, FoldWriter},
+    fold::{FOLD_TARGET, FoldWriter, has_control},
     rfc2047::write_phrase,
 };
 use crate::writer::Writer;
@@ -16,6 +16,8 @@ use std::borrow::Cow;
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct EmailAddress<'x> {
     pub name: Option<Cow<'x, str>>,
+    /// The address, written between `<` and `>` without its ASCII control
+    /// characters.
     pub email: Cow<'x, str>,
 }
 
@@ -135,7 +137,7 @@ impl Header for Address<'_> {
             && column + address.email.len() + 2 <= FOLD_TARGET
         {
             output.write_byte(b'<');
-            output.write(address.email.as_bytes());
+            output.write(&address.addr_spec());
             output.write(b">\r\n");
             return;
         }
@@ -213,6 +215,22 @@ fn write_list<W: Writer>(
 
 impl EmailAddress<'_> {
     #[inline]
+    fn addr_spec(&self) -> Cow<'_, [u8]> {
+        let email = self.email.as_bytes();
+        if has_control(email) {
+            Cow::Owned(
+                email
+                    .iter()
+                    .copied()
+                    .filter(|byte| !byte.is_ascii_control())
+                    .collect(),
+            )
+        } else {
+            Cow::Borrowed(email)
+        }
+    }
+
+    #[inline]
     pub(crate) fn write_mailbox<W: Writer>(&self, folder: &mut FoldWriter<'_, W>, tail: &[u8]) {
         if let Some(name) = &self.name {
             write_phrase(folder, name, TAIL_NONE);
@@ -221,7 +239,7 @@ impl EmailAddress<'_> {
 
         folder.begin_atom(self.email.len() + 2 + tail.len());
         folder.write_byte(b'<');
-        folder.write(self.email.as_bytes());
+        folder.write(&self.addr_spec());
         match tail {
             [] => folder.write_byte(b'>'),
             [b','] => folder.write(b">,"),
@@ -366,6 +384,94 @@ mod tests {
             )])],
         ));
         assert_eq!(header, "\"Team\":;\r\n");
+    }
+
+    #[test]
+    fn control_scan_matches_a_naive_scan() {
+        for len in 0..=24 {
+            for fill in [b'a', b' ', b'~', 0x80, 0xFF] {
+                let clean = vec![fill; len];
+                assert!(!has_control(&clean), "{clean:?}");
+                for pos in 0..len {
+                    for byte in [0x00, 0x09, 0x0A, 0x0D, 0x1F, 0x7F, 0x20, 0x7E, 0x80, 0x9F] {
+                        let mut bytes = clean.clone();
+                        bytes[pos] = byte;
+                        assert_eq!(
+                            has_control(&bytes),
+                            bytes.iter().any(u8::is_ascii_control),
+                            "{bytes:?}"
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn control_characters_in_addresses_cannot_inject_headers() {
+        let evil = "victim@example.com>\r\nBcc: injected@evil.test\r\nX-Injected: <x";
+        let long = format!("{evil}{}", "a".repeat(80));
+        for (address, expected) in [
+            (
+                Address::from(evil),
+                "<victim@example.com>Bcc: injected@evil.testX-Injected: <x>\r\n".to_string(),
+            ),
+            (
+                Address::new_list(vec![evil.into()]),
+                "<victim@example.com>Bcc: injected@evil.testX-Injected: <x>\r\n".to_string(),
+            ),
+            (
+                Address::new_address(Some("Name"), evil),
+                "\"Name\" <victim@example.com>Bcc: injected@evil.testX-Injected: <x>\r\n"
+                    .to_string(),
+            ),
+            (
+                Address::from(long.as_str()),
+                format!(
+                    "<victim@example.com>Bcc: injected@evil.testX-Injected: <x{}>\r\n",
+                    "a".repeat(80)
+                ),
+            ),
+            (
+                Address::new_group(
+                    Some("Team"),
+                    vec![Address::from("a\0b\u{7f}@x.test\t"), evil.into()],
+                ),
+                "\"Team\": <ab@x.test>,\r\n <victim@example.com>Bcc: injected@evil.testX-Injected: <x>;\r\n"
+                    .to_string(),
+            ),
+        ] {
+            let header = build(address);
+            assert_eq!(header, expected);
+            assert!(
+                header
+                    .split("\r\n")
+                    .skip(1)
+                    .all(|line| line.is_empty() || line.starts_with(' ')),
+                "{header:?}"
+            );
+            assert!(
+                !header
+                    .trim_end_matches("\r\n")
+                    .replace("\r\n ", " ")
+                    .bytes()
+                    .any(|byte| byte.is_ascii_control()),
+                "{header:?}"
+            );
+        }
+
+        let message = crate::MessageBuilder::new()
+            .from("a@example.com")
+            .to(evil)
+            .subject("s")
+            .text_body("b")
+            .write_to_vec()
+            .unwrap();
+        let parsed = MessageParser::new().parse(&message).unwrap();
+        let headers = parsed.headers();
+        assert!(!headers.contains("Bcc"));
+        assert!(!headers.contains("X-Injected"));
+        assert_eq!(headers.all_to().count(), 1);
     }
 
     fn build(address: Address<'_>) -> String {

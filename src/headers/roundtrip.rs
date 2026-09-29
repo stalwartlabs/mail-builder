@@ -950,6 +950,8 @@ fn control_characters_never_reach_the_output() {
                 &ContentType::new("attachment").attribute("filename", name),
                 false,
             ),
+            check("To", &Address::new_address(None::<&str>, name), false),
+            check("To", &Address::new_address(Some("N"), name), false),
         ] {
             let text = String::from_utf8_lossy(&header);
             assert_eq!(

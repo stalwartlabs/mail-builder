@@ -348,6 +348,32 @@ fn has_line_break(bytes: &[u8]) -> bool {
     found != 0
 }
 
+#[inline(always)]
+pub(crate) fn has_control(bytes: &[u8]) -> bool {
+    const BELOW_SPACE: u64 = u64::from_ne_bytes([0xE0; 8]);
+    const DEL: u64 = u64::from_ne_bytes([0x7F; 8]);
+
+    let (chunks, tail) = bytes.as_chunks::<8>();
+    let mut found = 0;
+
+    for chunk in chunks {
+        let word = u64::from_ne_bytes(*chunk);
+        found |= zero_lane(word & BELOW_SPACE) | zero_lane(word ^ DEL);
+    }
+
+    if !tail.is_empty() {
+        match bytes.last_chunk::<8>() {
+            Some(last) => {
+                let word = u64::from_ne_bytes(*last);
+                found |= zero_lane(word & BELOW_SPACE) | zero_lane(word ^ DEL);
+            }
+            None => return tail.iter().any(u8::is_ascii_control),
+        }
+    }
+
+    found != 0
+}
+
 /// Writes `value` as unstructured text, folding before whitespace runs and
 /// keeping every run so that unfolding restores the original value.
 pub(crate) fn write_unstructured<W: Writer>(folder: &mut FoldWriter<'_, W>, value: &[u8]) {

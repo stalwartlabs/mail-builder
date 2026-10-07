@@ -16,8 +16,6 @@ use std::borrow::Cow;
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct EmailAddress<'x> {
     pub name: Option<Cow<'x, str>>,
-    /// The address, written between `<` and `>` without its ASCII control
-    /// characters.
     pub email: Cow<'x, str>,
 }
 

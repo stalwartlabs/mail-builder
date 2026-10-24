@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file. This project adheres to [Semantic Versioning](https://semver.org/).
 
-## [2.0.0] - 2026-09-28
+## [2.0.0] - 2026-10-24
 
 ### Changed
 - Base64 and quoted-printable encoding is now done by the `encodify` crate.

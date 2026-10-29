@@ -17,6 +17,7 @@ use encodify::hex::PERCENT;
 const EXTENDED_CHARSET: &[u8] = b"UTF-8''";
 const MAX_PARAMETER_ATOM: usize = 75;
 const MIN_SECTION_PAYLOAD: usize = 12;
+const MAX_QUOTED_PARAMETER_VALUE: usize = 78;
 
 const fn escape_table() -> [u8; 256] {
     let mut table = [0u8; 256];
@@ -221,8 +222,9 @@ pub(crate) fn write_phrase<W: Writer>(folder: &mut FoldWriter<'_, W>, name: &str
 /// Writes `key=value`, quoting the value when it needs it and folding it,
 /// when the value does not fit, inside its quoted string. Values that carry
 /// non-ASCII or control characters are written as RFC 2231 extended
-/// parameters instead. `reserve` is the room a following separator needs on
-/// the same line.
+/// parameters instead, and values longer than 78 characters as RFC 2231
+/// quoted continuations (RFC 2183 section 2). `reserve` is the room a
+/// following separator needs on the same line.
 #[inline]
 pub(crate) fn write_parameter<W: Writer>(
     folder: &mut FoldWriter<'_, W>,
@@ -232,6 +234,9 @@ pub(crate) fn write_parameter<W: Writer>(
 ) {
     if needs_extended_encoding(value.as_bytes()) {
         return write_extended_parameter(folder, key, value, reserve);
+    }
+    if value.len() > MAX_QUOTED_PARAMETER_VALUE {
+        return write_continued_parameter(folder, key, value.as_bytes(), reserve);
     }
 
     let fixed = key.len() + 1 + reserve;
@@ -285,7 +290,23 @@ fn section_len(text: &str, budget: usize) -> (usize, usize) {
     (taken, len)
 }
 
-fn write_section_prefix<W: Writer>(folder: &mut FoldWriter<'_, W>, key: &str, section: usize) {
+fn quoted_section_len(bytes: &[u8], budget: usize) -> (usize, usize) {
+    let mut taken = 0;
+    let mut len = 0;
+
+    for &byte in bytes {
+        let byte_len = quoted_byte_len(byte);
+        if len + byte_len > budget && taken > 0 {
+            break;
+        }
+        len += byte_len;
+        taken += 1;
+    }
+
+    (taken, len)
+}
+
+fn write_section_name<W: Writer>(folder: &mut FoldWriter<'_, W>, key: &str, section: usize) {
     let mut digits = [0u8; 20];
     let mut at = digits.len();
     let mut value = section;
@@ -303,9 +324,54 @@ fn write_section_prefix<W: Writer>(folder: &mut FoldWriter<'_, W>, key: &str, se
     folder.write(key.as_bytes());
     folder.write_byte(b'*');
     folder.write(digits.get(at..).unwrap_or_default());
+}
+
+fn write_section_prefix<W: Writer>(folder: &mut FoldWriter<'_, W>, key: &str, section: usize) {
+    write_section_name(folder, key, section);
     folder.write(b"*=");
     if section == 0 {
         folder.write(EXTENDED_CHARSET);
+    }
+}
+
+fn write_continued_parameter<W: Writer>(
+    folder: &mut FoldWriter<'_, W>,
+    key: &str,
+    value: &[u8],
+    reserve: usize,
+) {
+    let verbatim = !has_escape(value);
+    let mut rest = value;
+    let mut section: usize = 0;
+
+    loop {
+        let digits = section.checked_ilog10().map_or(1, |log| log as usize + 1);
+        let prefix = key.len() + 4 + digits;
+        let budget = MAX_PARAMETER_ATOM
+            .saturating_sub(prefix + 1)
+            .max(MIN_SECTION_PAYLOAD);
+        let (taken, len) = if verbatim {
+            let taken = budget.min(rest.len());
+            (taken, taken)
+        } else {
+            quoted_section_len(rest, budget)
+        };
+        let (chunk, tail) = rest.split_at_checked(taken).unwrap_or((rest, b""));
+
+        if section > 0 {
+            folder.semicolon();
+        }
+        folder.begin_atom(prefix + len + if tail.is_empty() { reserve } else { 1 });
+        write_section_name(folder, key, section);
+        folder.write(b"=\"");
+        write_quoted_known(folder, chunk, len == chunk.len());
+        folder.write_byte(b'"');
+
+        if tail.is_empty() {
+            return;
+        }
+        rest = tail;
+        section += 1;
     }
 }
 

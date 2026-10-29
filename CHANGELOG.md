@@ -7,6 +7,7 @@ All notable changes to this project will be documented in this file. This projec
 ### Fixed
 - ASCII control characters other than tab, CR and LF in display names, group names and unstructured text headers are written as RFC 2047 encoded-words; they were written raw inside quoted strings and text (#53).
 - Multipart bodies no longer start with an empty line before the first boundary (#14).
+- `Content-Type` and `Content-Disposition` parameter values longer than 78 characters are written as RFC 2231 quoted continuations (`filename*0="..."; filename*1="..."`), as RFC 2183 requires, instead of one quoted string folded across lines (#51).
 
 ## [2.0.0] - 2026-10-24
 

@@ -118,6 +118,38 @@ mod tests {
         assert_eq!(parsed_filename(&header), name);
     }
 
+    // ASCII values over 78 characters use RFC 2231 quoted continuations (#51).
+    #[test]
+    fn long_ascii_value_uses_quoted_continuations() {
+        for name in [
+            "long ".repeat(200) + ".png",
+            "quote\"and\\backslash ".repeat(8) + ".txt",
+            "x".repeat(79),
+        ] {
+            let header = build(
+                ContentType::new("attachment")
+                    .attribute("filename", name.as_str())
+                    .attribute("size", "1234"),
+            );
+            assert!(header.contains("filename*0=\""), "{header:?}");
+            assert!(header.contains(" filename*1=\""), "{header:?}");
+            assert!(!header.contains("filename*0*"), "{header:?}");
+            assert!(!header.contains("=?"), "{header:?}");
+            assert!(header.ends_with(" size=\"1234\"\r\n"), "{header:?}");
+            for line in header.trim_end().split("\r\n") {
+                assert!(line.len() <= 78, "{line:?}");
+            }
+            assert_eq!(parsed_filename(&header), name);
+        }
+
+        let short = "y".repeat(78);
+        let header = build(ContentType::new("attachment").attribute("filename", short.as_str()));
+        assert!(
+            header.contains(&format!("filename=\"{short}\"")),
+            "{header:?}"
+        );
+    }
+
     #[test]
     fn control_characters_in_parameter_values_are_percent_encoded() {
         let header = build(ContentType::new("attachment").attribute("filename", "a\r\nb\u{1}.pdf"));

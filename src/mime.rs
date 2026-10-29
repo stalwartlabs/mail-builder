@@ -472,17 +472,14 @@ fn write_multipart_headers<'x>(
         }
     }
 
-    let boundary = boundary.unwrap_or_else(|| {
+    boundary.unwrap_or_else(|| {
         output.write(b"Content-Type: ");
         let boundary = make_boundary("_");
         ContentType::new("multipart/mixed")
             .attribute("boundary", &boundary)
             .write_header(output, 14);
         boundary.into()
-    });
-
-    output.write(b"\r\n");
-    boundary
+    })
 }
 
 fn raw_boundary<'x>(raw: Raw<'x>, output: &mut impl Writer) -> Cow<'x, str> {
@@ -557,13 +554,56 @@ mod tests {
             .write_part(&mut output);
         let output = String::from_utf8(output).unwrap();
         assert!(
-            output.starts_with(
-                "Content-Type: multipart/mixed; boundary=\"abc\"\r\n\r\n\r\n--abc\r\n"
-            ),
+            output.starts_with("Content-Type: multipart/mixed; boundary=\"abc\"\r\n\r\n--abc\r\n"),
             "{output:?}"
         );
         assert!(output.ends_with("\r\n--abc--\r\n"), "{output:?}");
     }
+
+    // Multipart headers are followed by exactly one empty line before the first boundary (#14).
+    #[test]
+    fn no_empty_preamble_before_first_boundary() {
+        let message = crate::MessageBuilder::new()
+            .message_id("id@example.org")
+            .body(MimePart::raw(vec![
+                MimePart::new("text/plain", "Hello"),
+                MimePart::new(
+                    "multipart/alternative",
+                    vec![
+                        MimePart::new("text/plain", "plain"),
+                        MimePart::new("text/html", "<p>html</p>"),
+                    ],
+                ),
+            ]))
+            .write_to_string()
+            .unwrap();
+
+        let boundaries = message
+            .lines()
+            .filter_map(|line| line.strip_prefix("--"))
+            .filter(|boundary| !boundary.ends_with("--"))
+            .collect::<HashSet<_>>();
+        assert_eq!(boundaries.len(), 2, "{message:?}");
+        for boundary in boundaries {
+            let first = format!("\r\n--{boundary}\r\n");
+            let (headers, _) = message.split_once(&first).unwrap();
+            assert!(headers.ends_with("\"\r\n"), "{message:?}");
+            assert!(!headers.ends_with("\r\n\r\n"), "{message:?}");
+        }
+
+        let parsed = mail_parser::MessageParser::new()
+            .parse(message.as_bytes())
+            .unwrap();
+        assert_eq!(
+            parsed
+                .parts()
+                .filter(|part| part.is_text())
+                .map(|part| part.raw_body())
+                .collect::<Vec<_>>(),
+            [&b"Hello"[..], b"plain", b"<p>html</p>"]
+        );
+    }
+
     use std::collections::HashSet;
 
     fn is_boundary_safe(value: &str) -> bool {

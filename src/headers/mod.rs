@@ -1,31 +1,31 @@
 /*
- * Copyright Stalwart Labs Ltd. See the COPYING
- * file at the top-level directory of this distribution.
+ * SPDX-FileCopyrightText: 2020 Stalwart Labs LLC <hello@stalw.art>
  *
- * Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
- * https://www.apache.org/licenses/LICENSE-2.0> or the MIT license
- * <LICENSE-MIT or https://opensource.org/licenses/MIT>, at your
- * option. This file may not be copied, modified, or distributed
- * except according to those terms.
+ * SPDX-License-Identifier: Apache-2.0 OR MIT
  */
 
 pub mod address;
 pub mod content_type;
 pub mod date;
+pub(crate) mod fold;
 pub mod message_id;
 pub mod raw;
+pub(crate) mod rfc2047;
+#[cfg(test)]
+mod roundtrip;
 pub mod text;
 pub mod url;
-
-use std::io::{self, Write};
 
 use self::{
     address::Address, content_type::ContentType, date::Date, message_id::MessageId, raw::Raw,
     text::Text, url::URL,
 };
+use crate::writer::Writer;
 
 pub trait Header {
-    fn write_header(&self, output: impl Write, bytes_written: usize) -> io::Result<usize>;
+    /// Writes the header value followed by CRLF. `column` is the number of
+    /// bytes already on the current line, normally the header name plus ": ".
+    fn write_header(&self, output: &mut impl Writer, column: usize);
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
@@ -51,7 +51,7 @@ impl<'x> From<ContentType<'x>> for HeaderType<'x> {
     }
 }
 
-impl<'x> From<Date> for HeaderType<'x> {
+impl From<Date> for HeaderType<'_> {
     fn from(value: Date) -> Self {
         HeaderType::Date(value)
     }
@@ -78,22 +78,22 @@ impl<'x> From<URL<'x>> for HeaderType<'x> {
     }
 }
 
-impl<'x> Header for HeaderType<'x> {
-    fn write_header(&self, output: impl Write, bytes_written: usize) -> io::Result<usize> {
+impl Header for HeaderType<'_> {
+    fn write_header(&self, output: &mut impl Writer, column: usize) {
         match self {
-            HeaderType::Address(value) => value.write_header(output, bytes_written),
-            HeaderType::Date(value) => value.write_header(output, bytes_written),
-            HeaderType::MessageId(value) => value.write_header(output, bytes_written),
-            HeaderType::Raw(value) => value.write_header(output, bytes_written),
-            HeaderType::Text(value) => value.write_header(output, bytes_written),
-            HeaderType::URL(value) => value.write_header(output, bytes_written),
-            HeaderType::ContentType(value) => value.write_header(output, bytes_written),
+            HeaderType::Address(value) => value.write_header(output, column),
+            HeaderType::Date(value) => value.write_header(output, column),
+            HeaderType::MessageId(value) => value.write_header(output, column),
+            HeaderType::Raw(value) => value.write_header(output, column),
+            HeaderType::Text(value) => value.write_header(output, column),
+            HeaderType::URL(value) => value.write_header(output, column),
+            HeaderType::ContentType(value) => value.write_header(output, column),
         }
     }
 }
 
-impl<'x> HeaderType<'x> {
-    pub fn as_content_type(&self) -> Option<&ContentType> {
+impl HeaderType<'_> {
+    pub fn as_content_type(&self) -> Option<&ContentType<'_>> {
         match self {
             HeaderType::ContentType(value) => Some(value),
             _ => None,

@@ -1,23 +1,15 @@
 /*
- * Copyright Stalwart Labs Ltd. See the COPYING
- * file at the top-level directory of this distribution.
+ * SPDX-FileCopyrightText: 2020 Stalwart Labs LLC <hello@stalw.art>
  *
- * Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
- * https://www.apache.org/licenses/LICENSE-2.0> or the MIT license
- * <LICENSE-MIT or https://opensource.org/licenses/MIT>, at your
- * option. This file may not be copied, modified, or distributed
- * except according to those terms.
+ * SPDX-License-Identifier: Apache-2.0 OR MIT
  */
 
-use std::borrow::Cow;
-
-use crate::encoders::{
-    base64::base64_encode_mime,
-    encode::{get_encoding_type, EncodingType},
-    quoted_printable::quoted_printable_encode,
+use super::{
+    Header,
+    fold::{FoldWriter, write_unstructured},
 };
-
-use super::Header;
+use crate::{encoders::encode::EncodingType, writer::Writer};
+use std::borrow::Cow;
 
 /// Unstructured text e-mail header.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
@@ -41,50 +33,161 @@ where
     }
 }
 
-impl<'x> Header for Text<'x> {
-    fn write_header(
-        &self,
-        mut output: impl std::io::Write,
-        mut bytes_written: usize,
-    ) -> std::io::Result<usize> {
-        match get_encoding_type(self.text.as_bytes(), true, false) {
-            EncodingType::Base64 => {
-                for (pos, chunk) in self.text.as_bytes().chunks(76 - bytes_written).enumerate() {
-                    if pos > 0 {
-                        output.write_all(b"\t")?;
-                    }
-                    output.write_all(b"=?utf-8?B?")?;
-                    base64_encode_mime(chunk, &mut output, true)?;
-                    output.write_all(b"?=\r\n")?;
-                }
-            }
+impl Header for Text<'_> {
+    fn write_header(&self, output: &mut impl Writer, column: usize) {
+        let mut folder = FoldWriter::new(output, column);
+
+        match EncodingType::for_header(self.text.as_bytes()) {
+            EncodingType::Base64 => folder.write_b_words(&self.text, b""),
             EncodingType::QuotedPrintable(is_ascii) => {
-                for (pos, chunk) in self.text.as_bytes().chunks(76 - bytes_written).enumerate() {
-                    if pos > 0 {
-                        output.write_all(b"\t")?;
-                    }
-                    if !is_ascii {
-                        output.write_all(b"=?utf-8?Q?")?;
-                    } else {
-                        output.write_all(b"=?us-ascii?Q?")?;
-                    }
-                    quoted_printable_encode(chunk, &mut output, true, false)?;
-                    output.write_all(b"?=\r\n")?;
-                }
+                folder.write_q_words::<false>(&self.text, is_ascii, b"")
             }
-            EncodingType::None => {
-                for (pos, &ch) in self.text.as_bytes().iter().enumerate() {
-                    if bytes_written >= 76 && ch.is_ascii_whitespace() && pos < self.text.len() - 1
-                    {
-                        output.write_all(b"\r\n\t")?;
-                        bytes_written = 1;
-                    }
-                    output.write_all(&[ch])?;
-                    bytes_written += 1;
-                }
-                output.write_all(b"\r\n")?;
-            }
+            EncodingType::None => write_unstructured(&mut folder, self.text.as_bytes()),
         }
-        Ok(0)
+
+        folder.finish();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use mail_parser::MessageParser;
+
+    #[test]
+    fn test_utf8_q_encoding_boundaries() {
+        let mut buf = b"Subject: ".to_vec();
+
+        let mut input = String::new();
+
+        for _ in 0..20000 {
+            input += "x";
+        }
+        for _ in 0..600 {
+            input += "δ";
+        }
+
+        input += "x";
+        for _ in 0..600 {
+            input += "δ";
+        }
+
+        let header = Text::new(input.clone());
+        header.write_header(&mut buf, "Subject: ".len());
+
+        let output = str::from_utf8(&buf).unwrap();
+
+        for line in output.lines() {
+            assert!(
+                line.trim().len() <= 78,
+                "Line exceeds 78 characters: {}",
+                line
+            );
+        }
+        let message = MessageParser::new()
+            .parse_headers(output.as_bytes())
+            .unwrap();
+        assert_eq!(message.subject().unwrap(), input);
+
+        assert!(output.starts_with("Subject: =?utf-8?Q?xxx"));
+
+        assert!(!output.contains("CE?="));
+        assert!(!output.contains("=?utf-8?Q?=B4"));
+    }
+
+    fn b_encoded_input() -> String {
+        let mut input = String::new();
+
+        for _ in 0..600 {
+            input += "δ";
+        }
+        input += "x";
+        for _ in 0..600 {
+            input += "δ";
+        }
+        input
+    }
+
+    #[test]
+    fn test_utf8_b_encoding_boundaries() {
+        let mut buf = b"Subject: ".to_vec();
+
+        let input = b_encoded_input();
+
+        let header = Text::new(input.clone());
+        header.write_header(&mut buf, "Subject: ".len());
+
+        let output = str::from_utf8(&buf).unwrap();
+        for line in output.lines() {
+            assert!(
+                line.trim().len() <= 78,
+                "Line exceeds 78 characters: {}",
+                line
+            );
+        }
+        let message = MessageParser::new()
+            .parse_headers(output.as_bytes())
+            .unwrap();
+        assert_eq!(message.subject().unwrap(), input);
+
+        assert!(output.starts_with("Subject: =?utf-8?B?zrTOtM60zrTOtM60"));
+
+        assert!(!output.contains("zg==?="));
+        assert!(!output.contains("?B?tM60zr"));
+
+        assert!(output.ends_with("\r\n"));
+    }
+
+    // Control characters other than folding whitespace are encoded (#53).
+    #[test]
+    fn control_characters_are_encoded() {
+        for input in ["ring \x07 the bell", "nul \0 byte", "\x1b[1mbold"] {
+            let mut buf = b"Subject: ".to_vec();
+            Text::new(input).write_header(&mut buf, "Subject: ".len());
+            let output = str::from_utf8(&buf).unwrap();
+            assert!(output.starts_with("Subject: =?us-ascii?Q?"), "{output:?}");
+            assert!(
+                !output
+                    .trim_end_matches("\r\n")
+                    .bytes()
+                    .any(|byte| byte.is_ascii_control()),
+                "{output:?}"
+            );
+            let message = MessageParser::new()
+                .parse_headers(output.as_bytes())
+                .unwrap();
+            assert_eq!(message.subject().unwrap(), input);
+        }
+
+        let mut buf = Vec::new();
+        Text::new("tab\tstays").write_header(&mut buf, 9);
+        assert_eq!(buf, b"tab\tstays\r\n");
+    }
+
+    #[test]
+    fn test_utf8_b_encoding_large_bytes_written() {
+        let mut buf = Vec::new();
+
+        let input = b_encoded_input();
+
+        let header = Text::new(input);
+
+        let bytes_written = 500;
+        header.write_header(&mut buf, bytes_written);
+
+        let output = str::from_utf8(&buf).unwrap();
+
+        for line in output.lines() {
+            assert!(
+                line.trim().len() <= 78,
+                "Line exceeds 78 characters: {}",
+                line
+            );
+        }
+
+        assert!(
+            output.starts_with("\r\n =?utf-8?B?zrTOtM60zrTOtM60"),
+            "{output:?}"
+        );
     }
 }

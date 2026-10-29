@@ -1,19 +1,12 @@
 /*
- * Copyright Stalwart Labs Ltd. See the COPYING
- * file at the top-level directory of this distribution.
+ * SPDX-FileCopyrightText: 2020 Stalwart Labs LLC <hello@stalw.art>
  *
- * Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
- * https://www.apache.org/licenses/LICENSE-2.0> or the MIT license
- * <LICENSE-MIT or https://opensource.org/licenses/MIT>, at your
- * option. This file may not be copied, modified, or distributed
- * except according to those terms.
+ * SPDX-License-Identifier: Apache-2.0 OR MIT
  */
 
+use super::{Header, fold::FoldWriter};
+use crate::{mime::write_boundary, writer::Writer};
 use std::borrow::Cow;
-
-use crate::mime::make_boundary;
-
-use super::Header;
 
 /// RFC5322 Message ID header
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
@@ -47,7 +40,7 @@ impl<'x> From<&'x str> for MessageId<'x> {
     }
 }
 
-impl<'x> From<String> for MessageId<'x> {
+impl From<String> for MessageId<'_> {
     fn from(value: String) -> Self {
         Self::new(value)
     }
@@ -80,44 +73,34 @@ where
     }
 }
 
-pub fn generate_message_id_header(
-    mut output: impl std::io::Write,
-    hostname: &str,
-) -> std::io::Result<()> {
-    output.write_all(b"<")?;
-    output.write_all(make_boundary(".").as_bytes())?;
-    output.write_all(b"@")?;
-    output.write_all(hostname.as_bytes())?;
-    output.write_all(b">")
+pub fn generate_message_id_header(output: &mut impl Writer, hostname: &str) {
+    output.write_byte(b'<');
+    write_boundary(output, ".");
+    output.write_byte(b'@');
+    output.write(hostname.as_bytes());
+    output.write_byte(b'>');
 }
 
-impl<'x> Header for MessageId<'x> {
-    fn write_header(
-        &self,
-        mut output: impl std::io::Write,
-        mut bytes_written: usize,
-    ) -> std::io::Result<usize> {
-        for (pos, id) in self.id.iter().enumerate() {
-            if pos > 0 {
-                if bytes_written + id.len() + 2 >= 76 {
-                    output.write_all(b"\r\n\t")?;
-                    bytes_written = 1;
-                } else {
-                    output.write_all(b" ")?;
-                    bytes_written += 1;
-                }
-            }
+impl Header for MessageId<'_> {
+    fn write_header(&self, output: &mut impl Writer, column: usize) {
+        let Some((last, head)) = self.id.split_last() else {
+            output.write(b"\r\n");
+            return;
+        };
 
-            output.write_all(b"<")?;
-            output.write_all(id.as_bytes())?;
-            output.write_all(b">")?;
-            bytes_written += id.len() + 2;
+        let mut folder = FoldWriter::new(output, column);
+
+        for id in head {
+            folder.begin_atom(id.len() + 2);
+            folder.write_byte(b'<');
+            folder.write(id.as_bytes());
+            folder.write_byte(b'>');
+            folder.space();
         }
 
-        if bytes_written > 0 {
-            output.write_all(b"\r\n")?;
-        }
-
-        Ok(0)
+        folder.begin_atom(last.len() + 2);
+        folder.write_byte(b'<');
+        folder.write(last.as_bytes());
+        folder.write(b">\r\n");
     }
 }

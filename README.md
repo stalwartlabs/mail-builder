@@ -10,6 +10,7 @@ _mail-builder_ is a flexible **e-mail builder library** written in Rust. It incl
 - Generates **e-mail** messages conforming to the Internet Message Format standard (_RFC 5322_).
 - Full **MIME** support (_RFC 2045 - 2049_) with automatic selection of the most optimal encoding for each message body part.
 - Fast **Base64**, **Quoted-Printable** and **RFC 2047** encoding through [`encodify`](https://crates.io/crates/encodify), its only required dependency (`gethostname` is optional).
+- Runs on `wasm32-unknown-unknown` with `default-features = false` (the clock is read through [`web-time`](https://crates.io/crates/web-time) on that target).
 
 Please note that this library does not support sending or parsing e-mail messages as these functionalities are provided by the crates [`mail-send`](https://crates.io/crates/mail-send) and [`mail-parser`](https://crates.io/crates/mail-parser).
 
@@ -165,6 +166,12 @@ To run the testsuite:
 
 ```bash
  $ cargo test --all-features
+```
+
+to run the WebAssembly tests (requires [`wasm-pack`](https://rustwasm.github.io/wasm-pack/) and Node.js):
+
+```bash
+ $ wasm-pack test --node --no-default-features
 ```
 
 or, to run the testsuite with MIRI:

@@ -5,6 +5,7 @@
  */
 
 use crate::{
+    SystemTime, UNIX_EPOCH,
     encoders::encode::BodyEncoding,
     headers::{
         Header, HeaderType, content_type::ContentType, message_id::MessageId, raw::Raw, text::Text,
@@ -16,7 +17,6 @@ use std::{
     borrow::Cow,
     cell::Cell,
     sync::atomic::{AtomicU64, Ordering},
-    time::{SystemTime, UNIX_EPOCH},
 };
 
 /// MIME part of an e-mail.

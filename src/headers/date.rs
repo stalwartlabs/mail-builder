@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0 OR MIT
  */
 
-use std::time::SystemTime;
+use crate::{SystemTime, UNIX_EPOCH};
 
 pub static DOW: &[&str] = &["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 pub static MONTH: &[&str] = &[
@@ -88,7 +88,7 @@ impl Date {
     pub fn now() -> Self {
         Self {
             date: SystemTime::now()
-                .duration_since(SystemTime::UNIX_EPOCH)
+                .duration_since(UNIX_EPOCH)
                 .map(|d| d.as_secs())
                 .unwrap_or(0) as i64,
         }

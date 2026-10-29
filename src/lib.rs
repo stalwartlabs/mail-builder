@@ -20,6 +20,11 @@ use std::{
 #[cfg(feature = "gethostname")]
 use std::sync::OnceLock;
 
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+pub(crate) use std::time::{SystemTime, UNIX_EPOCH};
+#[cfg(all(target_family = "wasm", target_os = "unknown"))]
+pub(crate) use web_time::{SystemTime, UNIX_EPOCH};
+
 use headers::{
     Header, HeaderType,
     address::Address,

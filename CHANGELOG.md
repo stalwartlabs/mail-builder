@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file. This projec
 
 ## [2.0.1] - Unreleased
 
+### Added
+- `wasm32-unknown-unknown` support: the current time is read through `web-time` on that target, where `std::time::SystemTime::now()` panics. Build with `default-features = false`, since `gethostname` does not support it (#26).
+
 ### Fixed
 - ASCII control characters other than tab, CR and LF in display names, group names and unstructured text headers are written as RFC 2047 encoded-words; they were written raw inside quoted strings and text (#53).
 - Multipart bodies no longer start with an empty line before the first boundary (#14).

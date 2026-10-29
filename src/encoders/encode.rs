@@ -113,8 +113,10 @@ impl EncodingType {
     /// encoded words, whichever is shorter.
     pub(crate) fn for_header(text: &[u8]) -> Self {
         let has_high = Self::has_high(text);
-        let needs_encoding =
-            has_high || text.len() > MAX_LINE_LEN || matches!(text.last(), Some(b' ' | b'\t'));
+        let needs_encoding = has_high
+            || text.len() > MAX_LINE_LEN
+            || matches!(text.last(), Some(b' ' | b'\t'))
+            || Self::has_non_space_control(text);
         if !needs_encoding {
             return EncodingType::None;
         }
@@ -133,6 +135,27 @@ impl EncodingType {
         });
         high_lanes != 0 || tail.iter().any(|&ch| ch >= DEL)
     }
+
+    fn has_non_space_control(text: &[u8]) -> bool {
+        const BELOW_SPACE: u64 = swar_splat(0xE0);
+        const TAB: u64 = swar_splat(b'\t');
+        const CR: u64 = swar_splat(b'\r');
+        const LF: u64 = swar_splat(b'\n');
+
+        let (chunks, tail) = text.as_chunks::<8>();
+        let control_lanes = chunks.iter().fold(0, |found, chunk| {
+            let word = u64::from_le_bytes(*chunk);
+            let allowed = swar_zero_lanes(word ^ TAB)
+                | swar_zero_lanes(word ^ CR)
+                | swar_zero_lanes(word ^ LF);
+            found | (swar_zero_lanes(word & BELOW_SPACE) & !allowed)
+        });
+        control_lanes != 0 || tail.iter().copied().any(is_non_space_control)
+    }
+}
+
+const fn is_non_space_control(byte: u8) -> bool {
+    byte < b' ' && !matches!(byte, b'\t' | b'\r' | b'\n')
 }
 
 impl BodyEncoding {
@@ -375,6 +398,28 @@ mod tests {
                     BodyEncoding::for_text(&body, is_body)
                 {
                     assert_eq!(engine.encode(&body).len(), len);
+                }
+            }
+        }
+    }
+
+    // SWAR control scan agrees with a byte-by-byte scan for every lane position.
+    #[test]
+    fn non_space_control_scan_matches_a_naive_scan() {
+        for len in 0..=24 {
+            for fill in [b'a', b' ', b'~', 0x80, 0xFF] {
+                let clean = vec![fill; len];
+                assert!(!EncodingType::has_non_space_control(&clean), "{clean:?}");
+                for pos in 0..len {
+                    for byte in 0..=u8::MAX {
+                        let mut bytes = clean.clone();
+                        bytes[pos] = byte;
+                        assert_eq!(
+                            EncodingType::has_non_space_control(&bytes),
+                            bytes.iter().copied().any(is_non_space_control),
+                            "{bytes:?}"
+                        );
+                    }
                 }
             }
         }

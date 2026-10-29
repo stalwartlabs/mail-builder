@@ -494,6 +494,31 @@ mod tests {
             .collect()
     }
 
+    // Control characters in display and group names are encoded, never written raw (#53).
+    #[test]
+    fn control_characters_in_names_are_encoded() {
+        for name in ["with \x07 bel", "nul \0 byte", "esc\x1b[0m", "\x01"] {
+            for address in [
+                Address::new_address(Some(name), "a@example.com"),
+                Address::new_group(Some(name), vec![Address::from("a@example.com")]),
+            ] {
+                let header = build(address);
+                assert!(header.contains("=?"), "not encoded in {header:?}");
+                assert!(
+                    !header
+                        .trim_end_matches("\r\n")
+                        .bytes()
+                        .any(|byte| byte.is_ascii_control()),
+                    "{header:?}"
+                );
+            }
+            assert_eq!(
+                parse(&build(Address::new_address(Some(name), "a@example.com"))),
+                vec![(Some(name.to_string()), Some("a@example.com".to_string()))]
+            );
+        }
+    }
+
     #[test]
     fn encoded_display_name_is_not_wrapped_in_quotes() {
         let header = build(Address::new_address(

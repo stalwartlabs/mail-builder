@@ -138,6 +138,32 @@ mod tests {
         assert!(output.ends_with("\r\n"));
     }
 
+    // Control characters other than folding whitespace are encoded (#53).
+    #[test]
+    fn control_characters_are_encoded() {
+        for input in ["ring \x07 the bell", "nul \0 byte", "\x1b[1mbold"] {
+            let mut buf = b"Subject: ".to_vec();
+            Text::new(input).write_header(&mut buf, "Subject: ".len());
+            let output = str::from_utf8(&buf).unwrap();
+            assert!(output.starts_with("Subject: =?us-ascii?Q?"), "{output:?}");
+            assert!(
+                !output
+                    .trim_end_matches("\r\n")
+                    .bytes()
+                    .any(|byte| byte.is_ascii_control()),
+                "{output:?}"
+            );
+            let message = MessageParser::new()
+                .parse_headers(output.as_bytes())
+                .unwrap();
+            assert_eq!(message.subject().unwrap(), input);
+        }
+
+        let mut buf = Vec::new();
+        Text::new("tab\tstays").write_header(&mut buf, 9);
+        assert_eq!(buf, b"tab\tstays\r\n");
+    }
+
     #[test]
     fn test_utf8_b_encoding_large_bytes_written() {
         let mut buf = Vec::new();

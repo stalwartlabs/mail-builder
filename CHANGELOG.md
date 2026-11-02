@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file. This project adheres to [Semantic Versioning](https://semver.org/).
 
-## [2.0.1] - Unreleased
+## [2.0.1] - 2026-11-02
 
 ### Added
 - `wasm32-unknown-unknown` support: the current time is read through `web-time` on that target, where `std::time::SystemTime::now()` panics. Build with `default-features = false`, since `gethostname` does not support it (#26).
